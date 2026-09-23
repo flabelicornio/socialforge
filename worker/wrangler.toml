@@ -9,6 +9,8 @@ binding = "DB"
 database_name = "socialforge-db"
 database_id = "57436fca-b7bf-4aba-a885-2ebea77addd1"
 
+   [vars]
+   FACEBOOK_APP_ID = "1245604221092071"
 # Secrets (NO se ponen aquí en texto plano; se configuran desde el
 # panel de Cloudflare Worker > Settings > Variables, como "Secret").
 # Necesarios:
