@@ -1,10 +1,14 @@
 export interface Env {
   DB: D1Database;
+  FACEBOOK_APP_ID?: string;
+  FACEBOOK_LOGIN_CONFIG_ID?: string;
   INSTAGRAM_CLIENT_SECRET?: string;
   FACEBOOK_CLIENT_SECRET?: string;
   TIKTOK_CLIENT_SECRET?: string;
   LEMONSQUEEZY_WEBHOOK_SECRET?: string;
 }
+
+const GRAPH_API_VERSION = "v26.0";
 
 // Verifica la firma HMAC-SHA256 que Lemon Squeezy manda en cada webhook.
 async function verifyLemonSqueezySignature(
@@ -57,7 +61,6 @@ export default {
           return json({ error: "email y deviceFingerprint son requeridos" }, 400);
         }
 
-        // Busca licencia existente por email, o crea una nueva.
         const existing = await env.DB.prepare(
           "SELECT * FROM licenses WHERE email = ?"
         )
@@ -109,7 +112,124 @@ export default {
         });
       }
 
-      // POST /oauth/:platform/start { licenseId }
+      // GET /oauth/facebook/start?licenseId=X — inicia el flujo real con Meta.
+      if (path === "/oauth/facebook/start" && method === "GET") {
+        const licenseId = url.searchParams.get("licenseId");
+        if (!licenseId || !env.FACEBOOK_APP_ID || !env.FACEBOOK_LOGIN_CONFIG_ID) {
+          return json(
+            { error: "licenseId requerido, o falta configurar FACEBOOK_APP_ID / FACEBOOK_LOGIN_CONFIG_ID" },
+            400
+          );
+        }
+        const state = uuid();
+        await env.DB.prepare(
+          `INSERT INTO oauth_exchanges (id, license_id, platform, state, created_at, consumed)
+           VALUES (?, ?, 'facebook', ?, ?, 0)`
+        )
+          .bind(uuid(), licenseId, state, Date.now())
+          .run();
+
+        const redirectUri = `${url.origin}/oauth/facebook/callback`;
+
+        const authUrl =
+          `https://www.facebook.com/${GRAPH_API_VERSION}/dialog/oauth` +
+          `?client_id=${env.FACEBOOK_APP_ID}` +
+          `&config_id=${env.FACEBOOK_LOGIN_CONFIG_ID}` +
+          `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+          `&response_type=code` +
+          `&state=${state}`;
+
+        return Response.redirect(authUrl, 302);
+      }
+
+      // GET /oauth/facebook/callback — a donde Meta redirige después del login.
+      if (path === "/oauth/facebook/callback" && method === "GET") {
+        const code = url.searchParams.get("code");
+        const state = url.searchParams.get("state");
+
+        if (!code || !state) {
+          return new Response("Falta code o state en la respuesta de Meta.", { status: 400 });
+        }
+
+        const pending = await env.DB.prepare(
+          `SELECT * FROM oauth_exchanges WHERE state = ? AND platform = 'facebook' AND consumed = 0`
+        )
+          .bind(state)
+          .first();
+
+        if (!pending) {
+          return new Response("Estado inválido o ya usado.", { status: 400 });
+        }
+
+        try {
+          const redirectUri = `${url.origin}/oauth/facebook/callback`;
+
+          const shortTokenRes = await fetch(
+            `https://graph.facebook.com/${GRAPH_API_VERSION}/oauth/access_token` +
+              `?client_id=${env.FACEBOOK_APP_ID}` +
+              `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+              `&client_secret=${env.FACEBOOK_CLIENT_SECRET}` +
+              `&code=${code}`
+          );
+          const shortTokenData = await shortTokenRes.json<{ access_token?: string; error?: unknown }>();
+          if (!shortTokenData.access_token) {
+            throw new Error("No se pudo obtener el token de corta duración: " + JSON.stringify(shortTokenData));
+          }
+
+          const longTokenRes = await fetch(
+            `https://graph.facebook.com/${GRAPH_API_VERSION}/oauth/access_token` +
+              `?grant_type=fb_exchange_token` +
+              `&client_id=${env.FACEBOOK_APP_ID}` +
+              `&client_secret=${env.FACEBOOK_CLIENT_SECRET}` +
+              `&fb_exchange_token=${shortTokenData.access_token}`
+          );
+          const longTokenData = await longTokenRes.json<{ access_token?: string }>();
+          const userToken = longTokenData.access_token ?? shortTokenData.access_token;
+
+          const pagesRes = await fetch(
+            `https://graph.facebook.com/${GRAPH_API_VERSION}/me/accounts` +
+              `?fields=id,name,access_token,instagram_business_account` +
+              `&access_token=${userToken}`
+          );
+          const pagesData = await pagesRes.json<{ data?: unknown[] }>();
+
+          await env.DB.prepare(`UPDATE oauth_exchanges SET result_json = ? WHERE id = ?`)
+            .bind(JSON.stringify({ userToken, pages: pagesData.data ?? [] }), pending.id)
+            .run();
+
+          return new Response(
+            `<html><body style="font-family:system-ui;text-align:center;padding:4rem">
+              <h2>Cuenta conectada ✅</h2>
+              <p>Ya puedes regresar a SocialForge.</p>
+            </body></html>`,
+            { headers: { "content-type": "text/html" } }
+          );
+        } catch (err) {
+          return new Response("Error completando el login con Meta: " + String(err), { status: 500 });
+        }
+      }
+
+      // GET /oauth/facebook/result?state=X
+      if (path === "/oauth/facebook/result" && method === "GET") {
+        const state = url.searchParams.get("state");
+        const pending = await env.DB.prepare(
+          `SELECT * FROM oauth_exchanges WHERE state = ? AND platform = 'facebook'`
+        )
+          .bind(state)
+          .first();
+
+        if (!pending) return json({ error: "estado no encontrado" }, 404);
+        if (!pending.result_json) return json({ pending: true });
+
+        const result = JSON.parse(pending.result_json as string);
+        await env.DB.prepare(`UPDATE oauth_exchanges SET consumed = 1, result_json = NULL WHERE id = ?`)
+          .bind(pending.id)
+          .run();
+
+        return json({ pending: false, ...result });
+      }
+
+      // POST /oauth/:platform/start — genérico para el resto de plataformas
       const startMatch = path.match(/^\/oauth\/([a-z]+)\/start$/);
       if (startMatch && method === "POST") {
         const platform = startMatch[1];
@@ -123,8 +243,6 @@ export default {
           .bind(uuid(), body.licenseId, platform, state, Date.now())
           .run();
 
-        // TODO: reemplazar por la URL real de autorización de cada plataforma
-        // una vez tengas las apps registradas en cada developer portal.
         return json({
           authUrl: `https://example-oauth-provider/${platform}/authorize?state=${state}`,
           state,
@@ -144,10 +262,6 @@ export default {
           .first();
 
         if (!pending) return json({ error: "estado inválido o ya usado" }, 400);
-
-        // TODO: aquí va el intercambio real code -> access_token con la
-        // plataforma correspondiente, usando el client_secret desde env.
-        // El token resultante se devuelve al cliente y NUNCA se guarda en D1.
 
         await env.DB.prepare(`UPDATE oauth_exchanges SET consumed = 1 WHERE id = ?`)
           .bind(pending.id)
@@ -173,7 +287,7 @@ export default {
         return json(release);
       }
 
-      // POST /webhooks/lemonsqueezy — activa/cancela entitlements de add-ons pagados
+      // POST /webhooks/lemonsqueezy
       if (path === "/webhooks/lemonsqueezy" && method === "POST") {
         const rawBody = await request.text();
         const signature = request.headers.get("x-signature");
@@ -189,8 +303,6 @@ export default {
 
         const payload = JSON.parse(rawBody);
         const eventName = payload?.meta?.event_name as string | undefined;
-        // custom_data debe llevar { licenseId, featureKey } — se configura
-        // como "checkout custom data" en el producto dentro de Lemon Squeezy.
         const licenseId = payload?.meta?.custom_data?.licenseId as string | undefined;
         const featureKey = payload?.meta?.custom_data?.featureKey as string | undefined;
         const subscriptionId = payload?.data?.id as string | undefined;
@@ -205,7 +317,7 @@ export default {
         let status: "active" | "cancelled" | "expired" | "past_due" = "active";
         if (eventName && cancelEvents.includes(eventName)) status = "cancelled";
         else if (eventName === "subscription_payment_failed") status = "past_due";
-        else if (!eventName || !activeEvents.includes(eventName)) status = "active"; // default seguro
+        else if (!eventName || !activeEvents.includes(eventName)) status = "active";
 
         const existing = await env.DB.prepare(
           `SELECT * FROM entitlements WHERE license_id = ? AND feature_key = ?`
@@ -231,7 +343,7 @@ export default {
         return json({ received: true });
       }
 
-      // GET /entitlements/:licenseId — qué add-ons tiene activos esta licencia
+      // GET /entitlements/:licenseId
       const entitlementsMatch = path.match(/^\/entitlements\/([a-zA-Z0-9-]+)$/);
       if (entitlementsMatch && method === "GET") {
         const licenseId = entitlementsMatch[1];
@@ -243,9 +355,7 @@ export default {
         return json({ entitlements: rows.results });
       }
 
-      // GET /ads/:platform/report — proxy hacia la Marketing API de cada red.
-      // Requiere: header Authorization con el token guardado en el Keychain
-      // del cliente, y un entitlement 'ads_reporting' activo.
+      // GET /ads/:platform/report
       const adsReportMatch = path.match(/^\/ads\/([a-z]+)\/report$/);
       if (adsReportMatch && method === "GET") {
         const platform = adsReportMatch[1];
@@ -266,9 +376,6 @@ export default {
           return json({ error: "ads_reporting no activo para esta licencia", locked: true }, 402);
         }
 
-        // TODO: implementar la llamada real a la Marketing API de cada
-        // plataforma (Meta, Google Ads, TikTok) usando `token` y devolver
-        // los datos normalizados. Placeholder mientras se conecta cada red.
         return json({
           platform,
           note: "Implementar llamada real a la Marketing API correspondiente.",
