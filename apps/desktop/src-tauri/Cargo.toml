@@ -1,0 +1,19 @@
+[package]
+name = "socialforge"
+version = "0.1.0"
+description = "SocialForge by LaTAM Studios - social media local-first"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2.0.0", features = [] }
+
+[dependencies]
+tauri = { version = "2.0.0", features = [] }
+tauri-plugin-sql = { version = "2.0.0", features = ["sqlite"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+uuid = { version = "1.10", features = ["v4"] }
+
+[[bin]]
+name = "socialforge"
+path = "src/main.rs"

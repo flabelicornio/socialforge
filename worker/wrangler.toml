@@ -1,0 +1,18 @@
+name = "socialforge-worker"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+
+# IMPORTANTE: después de crear la base D1 desde el panel de Cloudflare,
+# reemplaza "PENDIENTE_DATABASE_ID" con el ID real que te da Cloudflare.
+[[d1_databases]]
+binding = "DB"
+database_name = "socialforge-db"
+database_id = "PENDIENTE_DATABASE_ID"
+
+# Secrets (NO se ponen aquí en texto plano; se configuran desde el
+# panel de Cloudflare Worker > Settings > Variables, como "Secret").
+# Necesarios:
+#   INSTAGRAM_CLIENT_SECRET
+#   FACEBOOK_CLIENT_SECRET
+#   TIKTOK_CLIENT_SECRET
+#   (etc, uno por plataforma que actives)
