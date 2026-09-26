@@ -20,12 +20,19 @@ jobs:
 
     runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v5
 
-      - name: Setup Node 20
-        uses: actions/setup-node@v4
+      - name: Setup Node 22
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
+
+      - name: Setup pnpm (if exists)
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
 
       - name: Setup Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -43,17 +50,29 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
-      # Auto-detecta si usas npm, pnpm o yarn sin que tengas que saberlo
-      - name: Install frontend deps (auto)
+      - name: Debug - ver estructura
         run: |
-          if [ -f "pnpm-lock.yaml" ]; then
-            npm install -g pnpm
+          ls -la
+          ls -la apps/desktop || echo "no apps/desktop"
+          cat apps/desktop/package.json || echo "no package.json en apps/desktop"
+          cat package.json || echo "no package.json root"
+
+      - name: Install frontend deps (auto-detect)
+        run: |
+          if [ -f "apps/desktop/pnpm-lock.yaml" ]; then
+            cd apps/desktop && pnpm install
+          elif [ -f "apps/desktop/yarn.lock" ]; then
+            cd apps/desktop && yarn install
+          elif [ -f "apps/desktop/package-lock.json" ]; then
+            cd apps/desktop && npm install
+          elif [ -f "pnpm-lock.yaml" ]; then
             pnpm install
           elif [ -f "yarn.lock" ]; then
             yarn install
           else
             npm install
           fi
+        shell: bash
 
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@v0
@@ -64,9 +83,11 @@ jobs:
           args: ${{ matrix.args }}
 
       - name: Upload artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: socialforge-${{ matrix.platform }}
           path: |
             apps/desktop/src-tauri/target/**/bundle/
             apps/desktop/src-tauri/target/**/release/bundle/
+            apps/desktop/dist/
