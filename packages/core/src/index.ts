@@ -45,11 +45,12 @@ export interface Post {
   text: string;
   mediaIds: string[];
   platforms: SocialPlatform[];
-  scheduledFor: number | null; // epoch ms, null = draft
+  scheduledFor: number | null; // epoch ms, null = draft - permite N posts el mismo día
   status: JobStatus;
   createdAt: number;
   updatedAt: number;
   failureReason?: string;
+  linkUrl?: string | null; // Nuevo: FB soporta link nativo, IG se concatena al caption
 }
 
 export interface Workspace {
@@ -63,12 +64,10 @@ export interface Workspace {
 // - apps/demo-web -> guarda todo en memoria/IndexedDB del navegador
 export interface DataAdapter {
   listPosts(workspaceId: string): Promise<Post[]>;
-  createPost(post: Omit<Post, "id" | "createdAt" | "updatedAt">): Promise<Post>;
+  createPost(post: Omit<Post, "id" | "createdAt" | "updatedAt"> & { workspaceId: string }): Promise<Post>;
   updatePost(id: string, patch: Partial<Post>): Promise<Post>;
   deletePost(id: string): Promise<void>;
-
   listAccounts(workspaceId: string): Promise<SocialAccount[]>;
-
   listMedia(workspaceId: string): Promise<MediaAsset[]>;
   addMedia(asset: Omit<MediaAsset, "id">): Promise<MediaAsset>;
 }
