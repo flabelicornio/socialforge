@@ -28,10 +28,11 @@ jobs:
         with:
           node-version: 22
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
-          run_install: false
+            - name: Setup pnpm with corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@9 --activate
+          pnpm --version
 
       - uses: dtolnay/rust-toolchain@stable
         with:
