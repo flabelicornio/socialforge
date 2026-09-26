@@ -28,7 +28,7 @@ jobs:
         with:
           node-version: 22
 
-            - name: Setup pnpm with corepack
+      - name: Setup pnpm with corepack
         run: |
           corepack enable
           corepack prepare pnpm@9 --activate
@@ -44,12 +44,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
-      - name: Generate icons if missing
+      - name: Generate all icons
         run: |
-          if [ ! -f "apps/desktop/src-tauri/icons/icon.ico" ]; then
-            echo "Generando iconos..."
-            npx --yes @tauri-apps/cli@2 icon apps/desktop/src-tauri/icons/icon.png || echo "No se pudo generar icono, continuo..."
-          fi
+          cd apps/desktop
+          npx --yes @tauri-apps/cli@2 icon src-tauri/icons/icon.png
         shell: bash
 
       - name: Debug structure
