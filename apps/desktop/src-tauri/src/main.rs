@@ -37,8 +37,8 @@ struct CreatePostInput {
     link_url: Option<String>,
 }
 
-fn get_conn(state: &State<DbState>) -> std::sync::MutexGuard<'_, Connection> {
-    state.conn.lock().expect("db lock failed")
+fn get_conn<'a>(state: &'a State<DbState>) -> std::sync::MutexGuard<'a, Connection> {
+    state.0.lock().expect("failed to lock db")
 }
 
 #[tauri::command]
