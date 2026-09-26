@@ -1,4 +1,5 @@
 name: Build Desktop App
+
 on:
   push:
     branches: [main]
@@ -17,25 +18,72 @@ jobs:
             args: ''
           - platform: macos-latest
             args: '--target aarch64-apple-darwin'
+
     runs-on: ${{ matrix.platform }}
+
     steps:
       - uses: actions/checkout@v5
+
       - uses: actions/setup-node@v5
-        with: { node-version: 22 }
+        with:
+          node-version: 22
+
       - uses: pnpm/action-setup@v4
-        with: { version: 9, run_install: false }
+        with:
+          version: 9
+          run_install: false
+
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
       - name: Install Linux deps
         if: matrix.platform == 'ubuntu-22.04'
-        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-      - name: Generate icons (si faltan.ico/.icns)
         run: |
-          if [! -f "apps/desktop/src-tauri/icons/icon.ico" ]; then
-            npx --yes @tauri-apps/cli@2 icon apps/desktop/src-tauri/icons/icon.png || true
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Generate icons if missing
+        run: |
+          if [ ! -f "apps/desktop/src-tauri/icons/icon.ico" ]; then
+            echo "Generando iconos..."
+            npx --yes @tauri-apps/cli@2 icon apps/desktop/src-tauri/icons/icon.png || echo "No se pudo generar icono, continuo..."
           fi
+        shell: bash
+
+      - name: Debug structure
+        run: |
+          ls -la
+          ls -la apps/desktop || true
+          ls -la apps/desktop/src-tauri/icons || true
+          cat apps/desktop/src-tauri/Cargo.toml | head -n 50
+        shell: bash
+
       - name: Install deps
         run: |
-          if [ -f "pnpm-lock.yaml" ]; then pnpm install; elif [ -f "yarn.lock" ]; then yarn install; else npm install; fi
-      - uses: tauri-apps/tauri-action@v0
-        env: { GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} }
-        with: { projectPath:./apps/desktop, args: ${{ matrix.args }} }
+          if [ -f "apps/desktop/pnpm-lock.yaml" ]; then
+            echo "pnpm in apps/desktop"
+            cd apps/desktop && pnpm install
+          elif [ -f "pnpm-lock.yaml" ]; then
+            echo "pnpm en root"
+            pnpm install
+          elif [ -f "apps/desktop/package-lock.json" ]; then
+            cd apps/desktop && npm install
+          elif [ -f "package-lock.json" ]; then
+            npm install
+          else
+            echo "npm install en root y desktop"
+            npm install || true
+            if [ -f "apps/desktop/package.json" ]; then
+              cd apps/desktop && npm install
+            fi
+          fi
+        shell: bash
+
+      - name: Build Tauri App
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: ./apps/desktop
+          args: ${{ matrix.args }}
