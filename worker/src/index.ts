@@ -8,9 +8,8 @@ export interface Env {
   LEMONSQUEEZY_WEBHOOK_SECRET?: string;
 }
 
-const GRAPH_API_VERSION = "v26.0";
+const GRAPH_API_VERSION = "v21.0";
 
-// Verifica la firma HMAC-SHA256 que Lemon Squeezy manda en cada webhook.
 async function verifyLemonSqueezySignature(
   rawBody: string,
   signatureHeader: string | null,
@@ -49,7 +48,6 @@ export default {
     const method = request.method;
 
     try {
-      // POST /license/activate { email, deviceFingerprint, plan? }
       if (path === "/license/activate" && method === "POST") {
         const body = await request.json<{
           email: string;
@@ -91,7 +89,6 @@ export default {
         return json({ licenseId });
       }
 
-      // POST /license/validate { licenseId, deviceFingerprint }
       if (path === "/license/validate" && method === "POST") {
         const body = await request.json<{ licenseId: string; deviceFingerprint: string }>();
 
@@ -112,12 +109,18 @@ export default {
         });
       }
 
-      // GET /oauth/facebook/start?licenseId=X — inicia el flujo real con Meta.
       if (path === "/oauth/facebook/start" && method === "GET") {
         const licenseId = url.searchParams.get("licenseId");
+        console.log("ENV CHECK", !!env.FACEBOOK_APP_ID, !!env.FACEBOOK_LOGIN_CONFIG_ID);
+
         if (!licenseId || !env.FACEBOOK_APP_ID || !env.FACEBOOK_LOGIN_CONFIG_ID) {
           return json(
-            { error: "licenseId requerido, o falta configurar FACEBOOK_APP_ID / FACEBOOK_LOGIN_CONFIG_ID" },
+            {
+              error: "Falta env",
+              hasAppId: !!env.FACEBOOK_APP_ID,
+              hasConfigId: !!env.FACEBOOK_LOGIN_CONFIG_ID,
+              hasLicense: !!licenseId,
+            },
             400
           );
         }
@@ -142,8 +145,13 @@ export default {
         return Response.redirect(authUrl, 302);
       }
 
-      // GET /oauth/facebook/callback — a donde Meta redirige después del login.
       if (path === "/oauth/facebook/callback" && method === "GET") {
+        const metaError = url.searchParams.get("error");
+        const metaErrorDesc = url.searchParams.get("error_description");
+        if (metaError) {
+          return new Response(`Meta error: ${metaError} - ${metaErrorDesc}`, { status: 400 });
+        }
+
         const code = url.searchParams.get("code");
         const state = url.searchParams.get("state");
 
@@ -209,7 +217,6 @@ export default {
         }
       }
 
-      // GET /oauth/facebook/result?state=X
       if (path === "/oauth/facebook/result" && method === "GET") {
         const state = url.searchParams.get("state");
         const pending = await env.DB.prepare(
@@ -229,7 +236,6 @@ export default {
         return json({ pending: false, ...result });
       }
 
-      // POST /oauth/:platform/start — genérico para el resto de plataformas
       const startMatch = path.match(/^\/oauth\/([a-z]+)\/start$/);
       if (startMatch && method === "POST") {
         const platform = startMatch[1];
@@ -249,7 +255,6 @@ export default {
         });
       }
 
-      // POST /oauth/:platform/exchange { code, state }
       const exchangeMatch = path.match(/^\/oauth\/([a-z]+)\/exchange$/);
       if (exchangeMatch && method === "POST") {
         const platform = exchangeMatch[1];
@@ -273,7 +278,6 @@ export default {
         });
       }
 
-      // GET /updates/:platform/latest
       const updateMatch = path.match(/^\/updates\/([a-z]+)\/latest$/);
       if (updateMatch && method === "GET") {
         const platform = updateMatch[1];
@@ -287,7 +291,6 @@ export default {
         return json(release);
       }
 
-      // POST /webhooks/lemonsqueezy
       if (path === "/webhooks/lemonsqueezy" && method === "POST") {
         const rawBody = await request.text();
         const signature = request.headers.get("x-signature");
@@ -343,7 +346,6 @@ export default {
         return json({ received: true });
       }
 
-      // GET /entitlements/:licenseId
       const entitlementsMatch = path.match(/^\/entitlements\/([a-zA-Z0-9-]+)$/);
       if (entitlementsMatch && method === "GET") {
         const licenseId = entitlementsMatch[1];
@@ -355,7 +357,6 @@ export default {
         return json({ entitlements: rows.results });
       }
 
-      // GET /ads/:platform/report
       const adsReportMatch = path.match(/^\/ads\/([a-z]+)\/report$/);
       if (adsReportMatch && method === "GET") {
         const platform = adsReportMatch[1];
