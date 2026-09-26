@@ -55,25 +55,6 @@ El archivo `.github/workflows/build-desktop.yml` ya está listo para compilar Wi
 
 ---
 
-## Conectar Meta (Facebook + Instagram) — modo desarrollo, sin esperar revisión
-
-1. [developers.facebook.com/apps](https://developers.facebook.com/apps) → Create App → tipo "Business".
-2. En "Casos de uso", selecciona **"Administración de contenido"** (NO "Autenticar con inicio de sesión con Facebook" — esa es la versión de consumo, incompatible con lo que necesitamos). Esto activa **Facebook Login for Business** automáticamente.
-3. Settings → Basic: copia **App ID** y **App Secret**.
-4. Menú izquierdo → **Facebook Login for Business → Configurations → Create configuration**. Selecciona los permisos: `pages_show_list`, `pages_read_engagement`, `pages_manage_posts`, `instagram_basic`, `instagram_content_publish`. Guarda y copia el **Configuration ID**.
-5. Facebook Login for Business → Settings → Valid OAuth Redirect URIs, agrega:
-   `https://TU-WORKER.workers.dev/oauth/facebook/callback`
-6. App Roles → Roles: confirma que estás como Admin (ya deberías estarlo).
-7. En `worker/wrangler.toml`, reemplaza `PENDIENTE_TU_APP_ID` y `PENDIENTE_TU_CONFIG_ID` con los valores reales.
-8. En Cloudflare Worker → Settings → Variables, agrega `FACEBOOK_CLIENT_SECRET` como **Secret** con el App Secret.
-9. Corre `worker/schema_oauth_results.sql` en la consola D1 (además de los otros dos schemas).
-
-Con esto puedes publicar en tus propias Páginas/cuentas de Instagram sin esperar
-App Review — eso solo hace falta cuando conectes cuentas de clientes reales
-(Advanced Access).
-
----
-
 ## Ads Reporting (add-on pagado, fase 2)
 
 Los clientes ven el panel de Ads siempre, pero bloqueado hasta que pagan un
