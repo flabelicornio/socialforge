@@ -148,15 +148,35 @@ fn mark_job_status(job_id: String, status: String, error: Option<String>, state:
 
 fn main() {
     let migrations = vec![
-        Migration { version: 1, description: "init_schema", sql: include_str!("../migrations/001_init.sql"), kind: MigrationKind::Up },
-        Migration { version: 2, description: "ads_addon", sql: include_str!("../migrations/002_ads_addon.sql"), kind: MigrationKind::Up },
-        Migration { version: 3, description: "language_setting", sql: include_str!("../migrations/003_language.sql"), kind: MigrationKind::Up },
+        Migration {
+            version: 1,
+            description: "init_schema",
+            sql: include_str!("../migrations/001_init.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 2,
+            description: "ads_addon",
+            sql: include_str!("../migrations/002_ads_addon.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 3,
+            description: "language_setting",
+            sql: include_str!("../migrations/003_language.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 4,
+            description: "link_url",
+            sql: include_str!("../migrations/004_link_url.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
         .plugin(tauri_plugin_sql::Builder::default().add_migrations("sqlite:socialforge.db", migrations).build())
         .setup(|app| {
-            // Tauri 2.0 API: app.path() en vez de path_resolver()
             let app_dir = app.path().app_data_dir().expect("no app_data_dir");
             std::fs::create_dir_all(&app_dir).expect("create app_data_dir");
             let db_path = app_dir.join("socialforge.db");
