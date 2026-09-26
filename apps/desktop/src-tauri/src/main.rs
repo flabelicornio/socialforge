@@ -6,6 +6,10 @@ use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tauri::{Manager, State};
 
+const KEYRING_SERVICE: &str = "socialforge";
+// TODO: mover a un setting configurable cuando conectemos el dominio custom.
+const WORKER_BASE_URL: &str = "https://socialforge.wolves-and-crows.workers.dev";
+
 struct DbState {
     conn: Mutex<Connection>,
 }
@@ -37,9 +41,23 @@ struct CreatePostInput {
     link_url: Option<String>,
 }
 
-fn get_conn<'a>(state: &'a State<DbState>) -> std::sync::MutexGuard<'a, Connection> {
-    state.inner().conn.lock().expect("failed to lock db")
+// Resumen de cuenta conectada que SÍ es seguro mandar a React.
+// Nunca incluye el access_token — ese se queda en el Keychain.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AccountSummary {
+    id: String,
+    platform: String,
+    display_name: String,
+    external_account_id: Option<String>,
+    connected_at: i64,
 }
+
+fn get_conn(state: &State<DbState>) -> std::sync::MutexGuard<'_, Connection> {
+    state.inner().conn.lock().expect("db lock failed")
+}
+
+// ============ Posts / Jobs (ya existían, sin cambios de lógica) ============
 
 #[tauri::command]
 fn list_posts(workspace_id: String, state: State<DbState>) -> Result<Vec<Post>, String> {
@@ -171,14 +189,111 @@ fn mark_job_status(job_id: String, status: String, error: Option<String>, state:
     Ok(())
 }
 
+// ============ Cuentas conectadas: token en Keychain, metadata en SQLite ============
+
+// Llama al Worker para ver si el login de Facebook ya terminó. Si ya
+// terminó, guarda cada Página como una cuenta: el access_token va SOLO
+// al Keychain del sistema operativo (nunca a SQLite, nunca de vuelta a
+// React). React solo recibe el resumen sin token (AccountSummary).
+#[tauri::command]
+fn complete_facebook_connection(
+    state_param: String,
+    workspace_id: String,
+    db_state: State<DbState>,
+) -> Result<serde_json::Value, String> {
+    let url = format!("{}/oauth/facebook/result?state={}", WORKER_BASE_URL, state_param);
+    let resp: serde_json::Value = reqwest::blocking::get(&url)
+        .map_err(|e| format!("no se pudo contactar al Worker: {e}"))?
+        .json()
+        .map_err(|e| format!("respuesta inválida del Worker: {e}"))?;
+
+    if resp.get("pending").and_then(|v| v.as_bool()).unwrap_or(true) {
+        return Ok(serde_json::json!({ "pending": true, "accounts": [] }));
+    }
+
+    let pages = resp.get("pages").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    let conn = get_conn(&db_state);
+    let now = chrono::Utc::now().timestamp_millis();
+    let mut saved: Vec<AccountSummary> = Vec::new();
+
+    for page in pages {
+        let page_id = page.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let page_name = page.get("name").and_then(|v| v.as_str()).unwrap_or("Página sin nombre").to_string();
+        let page_token = page.get("access_token").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let ig_account = page.get("instagram_business_account").cloned();
+
+        if page_id.is_empty() || page_token.is_empty() {
+            continue; // dato incompleto, lo saltamos en vez de guardar basura
+        }
+
+        let account_id = uuid::Uuid::new_v4().to_string();
+        let extra_json = serde_json::json!({ "instagramBusinessAccount": ig_account }).to_string();
+
+        conn.execute(
+            "INSERT INTO accounts (id, workspace_id, platform, display_name, connected_at, external_account_id, extra_json) VALUES (?1, ?2, 'facebook', ?3, ?4, ?5, ?6)",
+            params![account_id, workspace_id, page_name, now, page_id, extra_json],
+        ).map_err(|e| e.to_string())?;
+
+        // El token SOLO vive aquí, cifrado por el OS (Keychain/Credential Manager).
+        let entry = keyring::Entry::new(KEYRING_SERVICE, &account_id)
+            .map_err(|e| format!("no se pudo abrir el keychain: {e}"))?;
+        entry.set_password(&page_token).map_err(|e| format!("no se pudo guardar el token: {e}"))?;
+
+        saved.push(AccountSummary {
+            id: account_id,
+            platform: "facebook".to_string(),
+            display_name: page_name,
+            external_account_id: Some(page_id),
+            connected_at: now,
+        });
+    }
+
+    Ok(serde_json::json!({ "pending": false, "accounts": saved }))
+}
+
+#[tauri::command]
+fn list_connected_accounts(workspace_id: String, state: State<DbState>) -> Result<Vec<AccountSummary>, String> {
+    let conn = get_conn(&state);
+    let mut stmt = conn
+        .prepare("SELECT id, platform, display_name, external_account_id, connected_at FROM accounts WHERE workspace_id = ?1 ORDER BY connected_at DESC")
+        .map_err(|e| e.to_string())?;
+    let accounts = stmt
+        .query_map(params![workspace_id], |row| {
+            Ok(AccountSummary {
+                id: row.get(0)?,
+                platform: row.get(1)?,
+                display_name: row.get(2)?,
+                external_account_id: row.get(3)?,
+                connected_at: row.get(4)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    Ok(accounts)
+}
+
+#[tauri::command]
+fn disconnect_account(account_id: String, state: State<DbState>) -> Result<(), String> {
+    let conn = get_conn(&state);
+    conn.execute("DELETE FROM accounts WHERE id = ?1", params![account_id]).map_err(|e| e.to_string())?;
+
+    // Si el keychain ya no tiene la entrada (o el usuario la borró a mano),
+    // no lo tratamos como error fatal — el objetivo (que ya no quede token) se cumple igual.
+    if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, &account_id) {
+        let _ = entry.delete_credential();
+    }
+    Ok(())
+}
+
 // Corre las migraciones a mano, llevando la cuenta con PRAGMA user_version.
-// Reemplaza al plugin tauri_plugin_sql, que ya no está en Cargo.toml.
 fn run_migrations(conn: &Connection) {
     let migrations: Vec<(i32, &str)> = vec![
         (1, include_str!("../migrations/001_init.sql")),
         (2, include_str!("../migrations/002_ads_addon.sql")),
         (3, include_str!("../migrations/003_language.sql")),
         (4, include_str!("../migrations/004_link_url.sql")),
+        (5, include_str!("../migrations/005_account_external_id.sql")),
     ];
 
     let current_version: i32 = conn
@@ -195,6 +310,7 @@ fn run_migrations(conn: &Connection) {
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let app_dir = app.path().app_data_dir().expect("no app_data_dir");
             std::fs::create_dir_all(&app_dir).expect("create app_data_dir");
@@ -211,7 +327,10 @@ fn main() {
             update_post,
             delete_post,
             get_due_jobs,
-            mark_job_status
+            mark_job_status,
+            complete_facebook_connection,
+            list_connected_accounts,
+            disconnect_account
         ])
         .run(tauri::generate_context!())
         .expect("error corriendo SocialForge");

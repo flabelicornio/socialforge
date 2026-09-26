@@ -33,6 +33,7 @@ CREATE TABLE posts (
   text TEXT NOT NULL DEFAULT '',
   platforms TEXT NOT NULL, -- JSON array: ["instagram","facebook"]
   media_ids TEXT NOT NULL DEFAULT '[]', -- JSON array de media_assets.id
+  link_url TEXT, -- FB nativo; en IG se concatena al caption al publicar
   scheduled_for INTEGER, -- epoch ms, NULL = draft
   status TEXT NOT NULL DEFAULT 'PENDING',
   -- PENDING|READY|PROCESSING|PUBLISHED|FAILED|RETRY|READY_FOR_USER

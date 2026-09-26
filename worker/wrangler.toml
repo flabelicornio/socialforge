@@ -7,11 +7,13 @@ compatibility_date = "2026-09-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "socialforge-db"
-database_id = "57436fca-b7bf-4aba-a885-2ebea77addd1"
+database_id = "PENDIENTE_DATABASE_ID"
 
-   [vars]
-   FACEBOOK_APP_ID = "1245604221092071"
-   FACEBOOK_LOGIN_CONFIG_ID = "1635464481609764"
+[vars]
+FACEBOOK_APP_ID = "1245604221092071"
+FACEBOOK_LOGIN_CONFIG_ID = "1635464481609764"
+FACEBOOK_LOGIN_CONFIG_ID = "PENDIENTE_TU_CONFIG_ID"
+
 # Secrets (NO se ponen aquí en texto plano; se configuran desde el
 # panel de Cloudflare Worker > Settings > Variables, como "Secret").
 # Necesarios:

@@ -1,0 +1,46 @@
+name: Build Desktop App
+
+# Se activa manualmente desde la pestaña "Actions" de GitHub
+# (botón "Run workflow"), o al subir un tag que empiece con "v".
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        platform: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Instalar dependencias de sistema (Linux)
+        if: matrix.platform == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Instalar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Instalar dependencias
+        run: npm install
+
+      - name: Generar íconos de la app (ico/icns/png) desde el placeholder
+        run: npx tauri icon apps/desktop/src-tauri/icons/app-icon.png -o apps/desktop/src-tauri/icons
+        working-directory: apps/desktop
+
+      - name: Compilar app de escritorio
+        uses: tauri-apps/tauri-action@v0
+        with:
+          projectPath: apps/desktop
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
