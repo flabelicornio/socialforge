@@ -1,8 +1,8 @@
 name: Build Desktop App
-
 on:
   push:
     branches: [main]
+    tags: ['v*']
   workflow_dispatch:
 
 jobs:
@@ -17,77 +17,25 @@ jobs:
             args: ''
           - platform: macos-latest
             args: '--target aarch64-apple-darwin'
-
     runs-on: ${{ matrix.platform }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Setup Node 22
-        uses: actions/setup-node@v5
-        with:
-          node-version: 22
-
-      - name: Setup pnpm (if exists)
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
-          run_install: false
-
-      - name: Setup Rust stable
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
-
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: './apps/desktop/src-tauri -> target'
-
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: 22 }
+      - uses: pnpm/action-setup@v4
+        with: { version: 9, run_install: false }
+      - uses: dtolnay/rust-toolchain@stable
       - name: Install Linux deps
         if: matrix.platform == 'ubuntu-22.04'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - name: Generate icons (si faltan.ico/.icns)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-
-      - name: Debug - ver estructura
-        run: |
-          ls -la
-          ls -la apps/desktop || echo "no apps/desktop"
-          cat apps/desktop/package.json || echo "no package.json en apps/desktop"
-          cat package.json || echo "no package.json root"
-
-      - name: Install frontend deps (auto-detect)
-        run: |
-          if [ -f "apps/desktop/pnpm-lock.yaml" ]; then
-            cd apps/desktop && pnpm install
-          elif [ -f "apps/desktop/yarn.lock" ]; then
-            cd apps/desktop && yarn install
-          elif [ -f "apps/desktop/package-lock.json" ]; then
-            cd apps/desktop && npm install
-          elif [ -f "pnpm-lock.yaml" ]; then
-            pnpm install
-          elif [ -f "yarn.lock" ]; then
-            yarn install
-          else
-            npm install
+          if [! -f "apps/desktop/src-tauri/icons/icon.ico" ]; then
+            npx --yes @tauri-apps/cli@2 icon apps/desktop/src-tauri/icons/icon.png || true
           fi
-        shell: bash
-
-      - name: Build Tauri App
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          projectPath: ./apps/desktop
-          args: ${{ matrix.args }}
-
-      - name: Upload artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: socialforge-${{ matrix.platform }}
-          path: |
-            apps/desktop/src-tauri/target/**/bundle/
-            apps/desktop/src-tauri/target/**/release/bundle/
-            apps/desktop/dist/
+      - name: Install deps
+        run: |
+          if [ -f "pnpm-lock.yaml" ]; then pnpm install; elif [ -f "yarn.lock" ]; then yarn install; else npm install; fi
+      - uses: tauri-apps/tauri-action@v0
+        env: { GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} }
+        with: { projectPath:./apps/desktop, args: ${{ matrix.args }} }
