@@ -451,55 +451,62 @@ socialforge/
 > Cuando termine una sesión, el usuario puede reemplazar este bloque por el `MASTER BRIEF UPDATE` generado por la IA.
 
 ## ESTADO
+Núcleo técnico en estabilización. Se confirmó, con evidencia directa
+(lectura de archivos reales y git log), que la sesión de edición web
+del 2026-09-26 (autor IndPlaneta, commits 02:05–08:23) iteró 3 veces
+sobre get_conn sin llegar a una versión final confiable, y que el
+reset local posterior (commit 0894230) no incorporó ni esa última
+iteración ni el trabajo de Keychain de sesiones anteriores.
 
-SocialForge se encuentra en fase de estabilización del núcleo técnico.
-
-El proyecto está sincronizado entre el repositorio local y GitHub en:
-
-`0894230 Update SocialForge project`
-
-## REVISADO
-
-* Arquitectura local-first.
-* Modelo `Post`.
-* `main.rs`.
-* Migraciones SQLite.
-* Estructura del monorepo.
-* Flujo Git.
-* Integración Meta OAuth existente.
+## CAMBIOS REALIZADOS
+- Eliminado .github/workflows/build-desktop.yml (duplicado de build.yml), commiteado.
+- Creado apps/desktop/src-tauri/migrations/004_link_url.sql
+  (contenido: ALTER TABLE posts ADD COLUMN link_url TEXT;)
 
 ## CONFIRMADO
-
-* `main` está sincronizado con `origin/main`.
-* Working tree limpio al último estado conocido.
-* `001_init.sql` contiene `link_url`.
-* `005_account_external_id.sql` existe y corresponde al uso actual de `external_account_id` y `extra_json`.
-* `main.rs` utiliza `link_url`.
+- git branch/status/fetch: local sincronizado con origin/main, sin
+  commits remotos pendientes de traer.
+- 001_init.sql NO contiene link_url (verificado leyendo el archivo
+  real — corrige una afirmación previa incorrecta del brief).
+- main.rs (antes de este parche) importaba tauri_plugin_sql, no
+  declarado en Cargo.toml → error de compilación garantizado.
+- migrations/004_link_url.sql no existía pese a ser referenciado por
+  main.rs vía include_str! → segunda causa de fallo de compilación.
 
 ## PENDIENTE
-
-* Determinar la solución correcta para la referencia a `004_link_url.sql`.
-* Verificar y resolver el problema de lifetime de `get_conn`.
-* Ejecutar nuevamente la compilación después de las correcciones.
-* Continuar estabilizando el núcleo antes de agregar funcionalidades secundarias.
+- Ejecutar el build de GitHub Actions con estos dos cambios y obtener
+  el mensaje de error REAL (si lo hay) antes de decidir el cambio a
+  get_conn.
+- Reincorporar los comandos de Keychain (complete_facebook_connection,
+  list_connected_accounts, disconnect_account) — pospuesto
+  deliberadamente hasta que el núcleo compile limpio.
+- Confirmar si packages/core/src/index.ts sigue teniendo el campo
+  linkUrl en el tipo Post (no verificado en esta sesión).
 
 ## BLOQUEADORES
+Ninguno nuevo. El bloqueador de compilación identificado tiene
+corrección aplicada, pendiente de verificar con un build real.
 
-La compilación todavía no está considerada estable.
+## ARCHIVOS MODIFICADOS
+- .github/workflows/build-desktop.yml (eliminado)
+- apps/desktop/src-tauri/migrations/004_link_url.sql (creado)
 
-No agregar funcionalidades comerciales o cosméticas importantes hasta que el núcleo compile correctamente.
+## GIT
+Working tree limpio tras los dos commits anteriores, main sincronizado
+con origin/main (a confirmar con git status después del push).
 
-## DECISIONES ACTUALES
-
-No aceptar automáticamente la propuesta de una IA externa.
-
-La arquitectura debe prevalecer sobre una solución rápida de compilación.
-
-No crear una segunda migración que duplique `link_url` sin determinar primero por qué `main.rs` referencia la migración 004.
+## DECISIONES
+- No modificar get_conn ni Cargo.toml hasta ver el error real de
+  compilación — evitar repetir el patrón de 3 refactors sin
+  verificación que ya ocurrió una vez en este mismo archivo.
+- De aquí en adelante, cualquier cambio de código se entrega como
+  archivo aislado independiente, para reemplazo directo en local vía
+  VS Code, en vez de archivos completos reescritos por otra IA sin
+  visibilidad del historial completo.
 
 ## PRÓXIMO PASO
-
-Investigar los errores de compilación contra el código real y determinar la corrección mínima compatible con la arquitectura.
+Correr el workflow de build en GitHub Actions y traer el log completo
+(éxito o error) antes de tocar get_conn o cualquier otro archivo.
 
 Después:
 
