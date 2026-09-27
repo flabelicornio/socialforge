@@ -7,7 +7,6 @@ use std::sync::Mutex;
 use tauri::{Manager, State};
 
 const KEYRING_SERVICE: &str = "socialforge";
-// TODO: mover a un setting configurable cuando conectemos el dominio custom.
 const WORKER_BASE_URL: &str = "https://socialforge.wolves-and-crows.workers.dev";
 
 struct DbState {
@@ -41,8 +40,6 @@ struct CreatePostInput {
     link_url: Option<String>,
 }
 
-// Resumen de cuenta conectada que SÍ es seguro mandar a React.
-// Nunca incluye el access_token — ese se queda en el Keychain.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct AccountSummary {
@@ -57,35 +54,19 @@ fn get_conn(state: &State<DbState>) -> std::sync::MutexGuard<'_, Connection> {
     state.inner().conn.lock().expect("db lock failed")
 }
 
-// ============ Posts / Jobs (ya existían, sin cambios de lógica) ============
-
 #[tauri::command]
 fn list_posts(workspace_id: String, state: State<DbState>) -> Result<Vec<Post>, String> {
     let conn = get_conn(&state);
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, workspace_id, text, platforms, media_ids, scheduled_for, status, failure_reason, link_url, created_at, updated_at FROM posts WHERE workspace_id = ?1 ORDER BY scheduled_for ASC, created_at DESC",
-        )
-        .map_err(|e| e.to_string())?;
-    let posts = stmt
-        .query_map(params![workspace_id], |row| {
-            Ok(Post {
-                id: row.get(0)?,
-                workspace_id: row.get(1)?,
-                text: row.get(2)?,
-                platforms: row.get(3)?,
-                media_ids: row.get(4)?,
-                scheduled_for: row.get(5)?,
-                status: row.get(6)?,
-                failure_reason: row.get(7)?,
-                link_url: row.get(8)?,
-                created_at: row.get(9)?,
-                updated_at: row.get(10)?,
-            })
+    let mut stmt = conn.prepare(
+        "SELECT id, workspace_id, text, platforms, media_ids, scheduled_for, status, failure_reason, link_url, created_at, updated_at FROM posts WHERE workspace_id = ?1 ORDER BY scheduled_for ASC, created_at DESC",
+    ).map_err(|e| e.to_string())?;
+    let posts = stmt.query_map(params![workspace_id], |row| {
+        Ok(Post {
+            id: row.get(0)?, workspace_id: row.get(1)?, text: row.get(2)?, platforms: row.get(3)?,
+            media_ids: row.get(4)?, scheduled_for: row.get(5)?, status: row.get(6)?,
+            failure_reason: row.get(7)?, link_url: row.get(8)?, created_at: row.get(9)?, updated_at: row.get(10)?,
         })
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
+    }).map_err(|e| e.to_string())?.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
     Ok(posts)
 }
 
@@ -113,29 +94,11 @@ fn create_post(input: CreatePostInput, state: State<DbState>) -> Result<Post, St
         }
     }
 
-    Ok(Post {
-        id,
-        workspace_id: input.workspace_id,
-        text: input.text,
-        platforms: platforms_json,
-        media_ids: media_ids_json,
-        scheduled_for: input.scheduled_for,
-        status: status.to_string(),
-        failure_reason: None,
-        link_url: input.link_url,
-        created_at: now,
-        updated_at: now,
-    })
+    Ok(Post { id, workspace_id: input.workspace_id, text: input.text, platforms: platforms_json, media_ids: media_ids_json, scheduled_for: input.scheduled_for, status: status.to_string(), failure_reason: None, link_url: input.link_url, created_at: now, updated_at: now })
 }
 
 #[tauri::command]
-fn update_post(
-    id: String,
-    patch_text: Option<String>,
-    patch_scheduled_for: Option<Option<i64>>,
-    patch_link_url: Option<Option<String>>,
-    state: State<DbState>,
-) -> Result<String, String> {
+fn update_post(id: String, patch_text: Option<String>, patch_scheduled_for: Option<Option<i64>>, patch_link_url: Option<Option<String>>, state: State<DbState>) -> Result<String, String> {
     let conn = get_conn(&state);
     let now = chrono::Utc::now().timestamp_millis();
     if let Some(text) = patch_text {
@@ -168,14 +131,9 @@ fn get_due_jobs(state: State<DbState>) -> Result<Vec<serde_json::Value>, String>
     let mut stmt = conn.prepare("SELECT j.id, j.platform, j.run_at, p.id, p.text, p.platforms, p.media_ids, p.link_url FROM jobs j JOIN posts p ON j.post_id = p.id WHERE j.run_at <= ?1 AND j.status IN ('PENDING','RETRY') ORDER BY j.run_at ASC LIMIT 10").map_err(|e| e.to_string())?;
     let jobs = stmt.query_map(params![now], |row| {
         Ok(serde_json::json!({
-            "jobId": row.get::<_, String>(0)?,
-            "platform": row.get::<_, String>(1)?,
-            "runAt": row.get::<_, i64>(2)?,
-            "postId": row.get::<_, String>(3)?,
-            "text": row.get::<_, String>(4)?,
-            "platforms": row.get::<_, String>(5)?,
-            "mediaIds": row.get::<_, String>(6)?,
-            "linkUrl": row.get::<_, Option<String>>(7)?,
+            "jobId": row.get::<_, String>(0)?, "platform": row.get::<_, String>(1)?, "runAt": row.get::<_, i64>(2)?,
+            "postId": row.get::<_, String>(3)?, "text": row.get::<_, String>(4)?, "platforms": row.get::<_, String>(5)?,
+            "mediaIds": row.get::<_, String>(6)?, "linkUrl": row.get::<_, Option<String>>(7)?,
         }))
     }).map_err(|e| e.to_string())?.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
     Ok(jobs)
@@ -189,23 +147,12 @@ fn mark_job_status(job_id: String, status: String, error: Option<String>, state:
     Ok(())
 }
 
-// ============ Cuentas conectadas: token en Keychain, metadata en SQLite ============
-
-// Llama al Worker para ver si el login de Facebook ya terminó. Si ya
-// terminó, guarda cada Página como una cuenta: el access_token va SOLO
-// al Keychain del sistema operativo (nunca a SQLite, nunca de vuelta a
-// React). React solo recibe el resumen sin token (AccountSummary).
 #[tauri::command]
-fn complete_facebook_connection(
-    state_param: String,
-    workspace_id: String,
-    db_state: State<DbState>,
-) -> Result<serde_json::Value, String> {
+fn complete_facebook_connection(state_param: String, workspace_id: String, db_state: State<DbState>) -> Result<serde_json::Value, String> {
     let url = format!("{}/oauth/facebook/result?state={}", WORKER_BASE_URL, state_param);
     let resp: serde_json::Value = reqwest::blocking::get(&url)
         .map_err(|e| format!("no se pudo contactar al Worker: {e}"))?
-        .json()
-        .map_err(|e| format!("respuesta inválida del Worker: {e}"))?;
+        .json().map_err(|e| format!("respuesta inválida del Worker: {e}"))?;
 
     if resp.get("pending").and_then(|v| v.as_bool()).unwrap_or(true) {
         return Ok(serde_json::json!({ "pending": true, "accounts": [] }));
@@ -222,9 +169,7 @@ fn complete_facebook_connection(
         let page_token = page.get("access_token").and_then(|v| v.as_str()).unwrap_or("").to_string();
         let ig_account = page.get("instagram_business_account").cloned();
 
-        if page_id.is_empty() || page_token.is_empty() {
-            continue; // dato incompleto, lo saltamos en vez de guardar basura
-        }
+        if page_id.is_empty() || page_token.is_empty() { continue; }
 
         let account_id = uuid::Uuid::new_v4().to_string();
         let extra_json = serde_json::json!({ "instagramBusinessAccount": ig_account }).to_string();
@@ -234,18 +179,11 @@ fn complete_facebook_connection(
             params![account_id, workspace_id, page_name, now, page_id, extra_json],
         ).map_err(|e| e.to_string())?;
 
-        // El token SOLO vive aquí, cifrado por el OS (Keychain/Credential Manager).
         let entry = keyring::Entry::new(KEYRING_SERVICE, &account_id)
             .map_err(|e| format!("no se pudo abrir el keychain: {e}"))?;
         entry.set_password(&page_token).map_err(|e| format!("no se pudo guardar el token: {e}"))?;
 
-        saved.push(AccountSummary {
-            id: account_id,
-            platform: "facebook".to_string(),
-            display_name: page_name,
-            external_account_id: Some(page_id),
-            connected_at: now,
-        });
+        saved.push(AccountSummary { id: account_id, platform: "facebook".to_string(), display_name: page_name, external_account_id: Some(page_id), connected_at: now });
     }
 
     Ok(serde_json::json!({ "pending": false, "accounts": saved }))
@@ -254,22 +192,10 @@ fn complete_facebook_connection(
 #[tauri::command]
 fn list_connected_accounts(workspace_id: String, state: State<DbState>) -> Result<Vec<AccountSummary>, String> {
     let conn = get_conn(&state);
-    let mut stmt = conn
-        .prepare("SELECT id, platform, display_name, external_account_id, connected_at FROM accounts WHERE workspace_id = ?1 ORDER BY connected_at DESC")
-        .map_err(|e| e.to_string())?;
-    let accounts = stmt
-        .query_map(params![workspace_id], |row| {
-            Ok(AccountSummary {
-                id: row.get(0)?,
-                platform: row.get(1)?,
-                display_name: row.get(2)?,
-                external_account_id: row.get(3)?,
-                connected_at: row.get(4)?,
-            })
-        })
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare("SELECT id, platform, display_name, external_account_id, connected_at FROM accounts WHERE workspace_id = ?1 ORDER BY connected_at DESC").map_err(|e| e.to_string())?;
+    let accounts = stmt.query_map(params![workspace_id], |row| {
+        Ok(AccountSummary { id: row.get(0)?, platform: row.get(1)?, display_name: row.get(2)?, external_account_id: row.get(3)?, connected_at: row.get(4)? })
+    }).map_err(|e| e.to_string())?.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
     Ok(accounts)
 }
 
@@ -277,16 +203,12 @@ fn list_connected_accounts(workspace_id: String, state: State<DbState>) -> Resul
 fn disconnect_account(account_id: String, state: State<DbState>) -> Result<(), String> {
     let conn = get_conn(&state);
     conn.execute("DELETE FROM accounts WHERE id = ?1", params![account_id]).map_err(|e| e.to_string())?;
-
-    // Si el keychain ya no tiene la entrada (o el usuario la borró a mano),
-    // no lo tratamos como error fatal — el objetivo (que ya no quede token) se cumple igual.
     if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, &account_id) {
         let _ = entry.delete_credential();
     }
     Ok(())
 }
 
-// Corre las migraciones a mano, llevando la cuenta con PRAGMA user_version.
 fn run_migrations(conn: &Connection) {
     let migrations: Vec<(i32, &str)> = vec![
         (1, include_str!("../migrations/001_init.sql")),
@@ -295,11 +217,7 @@ fn run_migrations(conn: &Connection) {
         (4, include_str!("../migrations/004_link_url.sql")),
         (5, include_str!("../migrations/005_account_external_id.sql")),
     ];
-
-    let current_version: i32 = conn
-        .query_row("PRAGMA user_version", [], |row| row.get(0))
-        .unwrap_or(0);
-
+    let current_version: i32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0)).unwrap_or(0);
     for (version, sql) in migrations {
         if version > current_version {
             conn.execute_batch(sql).expect("migración falló");
@@ -322,15 +240,8 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            list_posts,
-            create_post,
-            update_post,
-            delete_post,
-            get_due_jobs,
-            mark_job_status,
-            complete_facebook_connection,
-            list_connected_accounts,
-            disconnect_account
+            list_posts, create_post, update_post, delete_post, get_due_jobs, mark_job_status,
+            complete_facebook_connection, list_connected_accounts, disconnect_account
         ])
         .run(tauri::generate_context!())
         .expect("error corriendo SocialForge");
