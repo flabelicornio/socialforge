@@ -442,77 +442,108 @@ socialforge/
 
 # 7. SANDBOX
 
-## ESTADO
-Núcleo técnico compilando correctamente en los tres sistemas objetivo.
-Se superó el milestone de compilación multiplataforma: GitHub Actions completó
-exitosamente los builds de Windows, macOS y Ubuntu.
+***Aqui voy a pegar todo el ultimo mensaje de cada actualizacion a pesar de la interpretacion de la ia por "actualizar el brief" para que podamos comparar con la estructura total****:
 
-La siguiente fase ya no es corregir compilación, sino realizar la primera
-validación funcional del artefacto Windows.
 
-## CAMBIOS REALIZADOS
-- `apps/desktop/src-tauri/src/main.rs`: corregido el lifetime de `get_conn`.
-  La firma quedó:
-  `fn get_conn<'a>(state: &'a State<'_, DbState>) -> std::sync::MutexGuard<'a, Connection>`
-- Cambio confirmado mediante `git diff` y posteriormente commit/push.
-- Commit del fix:
-  `02b655a Fix database connection lifetime`
-- `.github/workflows/build.yml`: mantiene el fix previo que fuerza
-  `shell: bash` en el paso de instalación de frontend.
-- Se eliminó previamente el workflow redundante `build-desktop.yml`.
-- Se generó y descargó correctamente el artefacto Windows desde GitHub Actions.
-- Se realizó extracción administrativa del MSI sin instalar SocialForge.
+Sí, tienes toda la razón. 😄 Estamos haciendo demasiada cirugía por partes para algo que originalmente era simplemente **actualizar el estado del Brief**.
 
-## CONFIRMADO
-### GitHub Actions
-Los tres jobs del workflow terminaron en verde:
-- Windows: CONFIRMADO
-- macOS: CONFIRMADO
-- Ubuntu 22.04: CONFIRMADO
+Hagámoslo limpio: **desde la línea 324 hasta el final**, reemplaza todo por este bloque completo. Así no hay riesgo de dejar pedazos del estado anterior mezclados con el nuevo.
+
+````text
+## ESTADO ACTUAL
+
+**Commit actual:**
+
+`02b655a Fix database connection lifetime`
+
+**GitHub:**
+
+`origin/main`
+
+**Estado Git conocido:**
+
+La rama `main` contiene el fix de lifetime y el build multiplataforma
+posterior confirmó que el proyecto compila correctamente en los tres
+sistemas objetivo.
+
+## Situación del proyecto
+
+La arquitectura base está definida y el proyecto ha superado el milestone
+de compilación multiplataforma.
+
+La aplicación Tauri utiliza SQLite local.
+
+El Worker existe como backend delgado.
+
+La integración OAuth de Meta existe y se encuentra en desarrollo funcional.
+
+La siguiente fase ya no es resolver problemas de compilación, sino validar
+el comportamiento real de la aplicación Windows.
+
+## Compilación multiplataforma
+
+GitHub Actions confirmó correctamente los siguientes targets:
+
+- Windows
+- macOS
+- Ubuntu 22.04
+
+Los tres jobs terminaron en verde.
 
 ### Ubuntu
+
 El build produjo correctamente:
+
 - `.deb`
 - `.rpm`
 - `.AppImage`
 
-El artifact de Ubuntu fue cargado correctamente.
+El artifact correspondiente fue cargado correctamente.
 
 ### Windows
-Artifact:
+
+Se generó correctamente el artifact:
+
 `socialforge-windows-latest`
 
 Artifact ID:
+
 `10922008578`
 
-Tamaño aproximado:
-`7,755,873 bytes`
+El artifact fue descargado localmente como:
 
-El ZIP fue descargado localmente como:
 `E:\socialforge-windows-latest.zip`
 
-El ZIP fue extraído a:
+El ZIP fue extraído en:
+
 `E:\socialforge-test`
 
 Contenido confirmado:
-- `release\bundle\msi\SocialForge_0.1.0_x64_en-US.msi`
-- `release\bundle\nsis\SocialForge_0.1.0_x64-setup.exe`
+
+`E:\socialforge-test\release\bundle\msi\SocialForge_0.1.0_x64_en-US.msi`
+
+`E:\socialforge-test\release\bundle\nsis\SocialForge_0.1.0_x64-setup.exe`
 
 Tamaños confirmados:
+
 - MSI: `4,710,400 bytes`
 - NSIS: `3,277,129 bytes`
 
-### MSI
-Se realizó extracción administrativa mediante `msiexec /a` sin instalar
-SocialForge.
+## MSI y ejecutable Windows
+
+Se realizó una extracción administrativa del MSI mediante `msiexec /a`
+sin instalar todavía SocialForge.
 
 Destino:
+
 `E:\socialforge-msi-extracted`
 
-Contenido relevante confirmado:
+El ejecutable fue encontrado en:
+
 `E:\socialforge-msi-extracted\PFiles\SocialForge\socialforge.exe`
 
-Ejecutable:
+Características confirmadas:
+
 - Tamaño: `12,980,224 bytes`
 - FileVersion: `0.1.0`
 - ProductVersion: `0.1.0`
@@ -522,104 +553,283 @@ Ejecutable:
 - Debug: `False`
 - PreRelease: `False`
 
-### Firma
+Esto confirma que el bundle Windows contiene un ejecutable real de
+SocialForge y que el MSI puede ser procesado correctamente.
+
+## Firma digital
+
 El MSI y el instalador NSIS aparecen como:
+
 `Status: NotSigned`
 
-Esto NO se considera un error de compilación ni un bloqueador para
-la prueba de desarrollo actual.
+Esto no constituye un error de compilación y no bloquea la validación
+local durante desarrollo.
 
-### Estado del instalador
-El instalador MSI fue iniciado y actualmente muestra el flujo inicial
-del instalador con el botón `Next`.
+La firma de código se considera una tarea posterior para distribución
+pública.
 
-NO SE HA COMPLETADO TODAVÍA LA INSTALACIÓN.
+## Fix de base de datos
 
-### Laboratorio local
-Se están utilizando las siguientes rutas en la unidad `E:` para mantener
-los artefactos y pruebas separados del entorno principal:
+El error de compilación relacionado con el lifetime de `get_conn` fue
+corregido en:
 
-`E:\socialforge-test`
-`E:\socialforge-msi-extracted`
+`apps/desktop/src-tauri/src/main.rs`
 
-La intención de utilizar `E:` es mantener aislados los artefactos y
-facilitar la eliminación/recreación del entorno de prueba.
+La firma actual es:
 
-Esto NO implica que SocialForge sea una aplicación portable ni que todos
-sus datos, SQLite o credenciales permanezcan necesariamente en `E:`.
+```rust
+fn get_conn<'a>(state: &'a State<'_, DbState>) -> std::sync::MutexGuard<'a, Connection>
+````
 
-## PENDIENTE
-- Completar la primera instalación controlada de SocialForge.
-- Determinar si el MSI permite seleccionar una ubicación personalizada
-  como `E:\SocialForge-Install`.
-- Ejecutar SocialForge por primera vez.
-- Verificar que la ventana Tauri/React arranque correctamente.
-- Verificar comportamiento de SQLite local.
-- Verificar Keychain/Credential Manager de Windows.
-- Verificar la interfaz y funcionalidad de Accounts.
-- Verificar el flujo OAuth de Meta.
-- Verificar conexión de Facebook/Instagram.
-- Intentar el primer post real.
-- Confirmar funcionalmente `linkUrl` en `packages/core/src/index.ts`.
-- Revisar cualquier problema funcional solamente después de ejecutar
-  el artefacto real.
+El cambio fue incluido en:
 
-## BLOQUEADORES
-Ninguno confirmado.
-
-El proyecto ya supera la fase de compilación multiplataforma.
-
-No existe actualmente evidencia que justifique realizar nuevas
-modificaciones de código antes de ejecutar el artefacto Windows.
-
-## ARCHIVOS MODIFICADOS
-- `apps/desktop/src-tauri/src/main.rs`
-  - Fix de lifetime de `get_conn`
-- `.github/workflows/build.yml`
-  - Fix previo de `shell: bash`
-- `build-desktop.yml`
-  - Eliminado previamente por ser workflow redundante
-
-No se realizaron modificaciones adicionales al código durante la
-validación del artefacto Windows.
-
-## GIT
-Rama:
-`main`
-
-Commit confirmado:
 `02b655a Fix database connection lifetime`
 
-Push confirmado:
+El build posterior confirmó que este problema quedó resuelto.
+
+## Migraciones
+
+La migración:
+
+`004_link_url.sql`
+
+existe en el repositorio.
+
+No crear otra migración duplicada para `link_url` sin revisar primero
+el estado real de las migraciones.
+
+## Workflow de build
+
+`.github/workflows/build.yml` mantiene el fix previo que fuerza:
+
+`shell: bash`
+
+en el paso de instalación de dependencias frontend.
+
+El workflow redundante:
+
+`build-desktop.yml`
+
+fue eliminado previamente.
+
+El workflow principal de build es el que produjo los artifacts
+multiplataforma confirmados.
+
+## Laboratorio local
+
+Durante esta etapa se están utilizando las siguientes rutas:
+
+`E:\socialforge-test`
+
+`E:\socialforge-msi-extracted`
+
+La intención es mantener los artifacts y las pruebas separados del
+entorno principal y facilitar su eliminación o recreación.
+
+Esto NO implica que SocialForge sea una aplicación portable ni que
+SQLite, configuración o credenciales permanezcan necesariamente en `E:`.
+
+## Instalador
+
+El instalador MSI fue abierto y actualmente muestra el flujo inicial
+del instalador con el botón `Next`.
+
+La instalación todavía NO ha sido completada.
+
+Se decidió continuar la prueba utilizando `E:` como entorno de laboratorio
+para reducir el impacto sobre el sistema principal.
+
+## PENDIENTE
+
+### Primera validación funcional de Windows
+
+* Continuar el instalador MSI.
+* Determinar si permite seleccionar una ubicación personalizada en `E:`.
+* Instalar SocialForge en el entorno de prueba.
+* Ejecutar SocialForge por primera vez.
+* Verificar que la ventana Tauri/React arranque correctamente.
+* Verificar SQLite local.
+* Verificar Keychain/Credential Manager de Windows.
+* Verificar la pantalla de Accounts.
+* Verificar el flujo OAuth de Meta.
+* Verificar conexión de Facebook e Instagram.
+* Intentar el primer post real.
+* Confirmar funcionalmente `linkUrl` en `packages/core/src/index.ts`.
+
+## BLOQUEADORES
+
+Ninguno confirmado.
+
+La compilación multiplataforma ya está confirmada.
+
+No realizar nuevas modificaciones de código solamente por anticipación.
+
+Primero ejecutar el artefacto real y diagnosticar cualquier problema
+funcional observado.
+
+## DECISIONES ACTUALES
+
+* No modificar código solamente por anticipación.
+* La compilación de Windows, macOS y Ubuntu está confirmada.
+* La siguiente validación debe hacerse sobre el artefacto Windows real.
+* Mantener los artifacts de prueba en `E:` durante esta fase.
+* No asumir que SocialForge es portable solamente porque pueda instalarse
+  en una ruta personalizada.
+* No instalar Visual Studio únicamente para obtener `dumpbin`.
+* `NotSigned` se acepta temporalmente durante desarrollo.
+* Mantener el MSI y el ejecutable extraído como referencia hasta terminar
+  la primera prueba funcional.
+* No borrar todavía `E:\socialforge-test` ni
+  `E:\socialforge-msi-extracted`.
+* No cambiar arquitectura antes de completar la primera prueba funcional.
+
+## GIT
+
+Rama:
+
+`main`
+
+Commit actual:
+
+`02b655a Fix database connection lifetime`
+
+Push a:
+
 `origin/main`
 
-El commit anterior al fix era:
-`d716b78`
+confirmado.
 
-El cambio enviado fue exactamente una modificación de una línea en
-`main.rs`.
+## ARCHIVOS Y CAMBIOS RELEVANTES
 
-## DECISIONES
-- No realizar más cambios de código solamente por anticipación.
-- La compilación multiplataforma ya está confirmada.
-- La siguiente validación debe hacerse sobre el artefacto Windows real.
-- Mantener los artefactos de prueba en `E:` durante esta fase.
-- No asumir que la aplicación es portable solamente porque puede
-  instalarse en una ruta personalizada.
-- No instalar Visual Studio ni herramientas adicionales únicamente para
-  ejecutar `dumpbin`.
-- `NotSigned` se acepta temporalmente durante desarrollo.
-- Mantener el MSI y el ejecutable extraído disponibles como referencia
-  hasta terminar la primera prueba funcional.
-- La prioridad inmediata es:
-  instalación → primer arranque → SQLite/Keychain → Accounts →
-  Meta OAuth → primer post real.
+### `apps/desktop/src-tauri/src/main.rs`
+
+Fix de lifetime de `get_conn`.
+
+### `.github/workflows/build.yml`
+
+Fix previo de `shell: bash` para el paso de instalación de frontend.
+
+### `build-desktop.yml`
+
+Workflow redundante eliminado previamente.
+
+### `004_link_url.sql`
+
+Migración existente para `link_url`.
 
 ## PRÓXIMO PASO
-1. Continuar el instalador MSI desde la pantalla actual.
-2. Verificar si permite seleccionar una ubicación personalizada en `E:`.
-3. Instalar SocialForge en el entorno de prueba.
-4. Ejecutar la aplicación.
-5. Registrar cualquier comportamiento o error real.
-6. No modificar código hasta tener evidencia del comportamiento funcional.
-7. Si el arranque es correcto, continuar con Accounts y Meta OAuth.
+
+El siguiente paso no es otro build.
+
+Es:
+
+```text
+MSI
+ ↓
+instalación controlada
+ ↓
+primer arranque
+ ↓
+Tauri / React
+ ↓
+SQLite
+ ↓
+Keychain / Credential Manager
+ ↓
+Accounts
+ ↓
+Meta OAuth
+ ↓
+Facebook / Instagram
+ ↓
+primer post real
+```
+
+No modificar código hasta observar el comportamiento real del artefacto.
+
+## SANDBOX
+
+### ESTADO
+
+SocialForge superó el milestone de compilación multiplataforma.
+
+GitHub Actions completó correctamente los builds de:
+
+* Windows
+* macOS
+* Ubuntu 22.04
+
+La siguiente fase es la primera validación funcional del artefacto Windows.
+
+### ARTEFACTOS WINDOWS
+
+ZIP:
+
+`E:\socialforge-windows-latest.zip`
+
+Extracción:
+
+`E:\socialforge-test`
+
+MSI:
+
+`E:\socialforge-test\release\bundle\msi\SocialForge_0.1.0_x64_en-US.msi`
+
+NSIS:
+
+`E:\socialforge-test\release\bundle\nsis\SocialForge_0.1.0_x64-setup.exe`
+
+MSI extraído administrativamente:
+
+`E:\socialforge-msi-extracted`
+
+Ejecutable:
+
+`E:\socialforge-msi-extracted\PFiles\SocialForge\socialforge.exe`
+
+### VALIDACIÓN REALIZADA
+
+* ZIP descargado correctamente.
+* ZIP extraído correctamente.
+* MSI localizado correctamente.
+* NSIS localizado correctamente.
+* MSI procesado mediante extracción administrativa.
+* Ejecutable `socialforge.exe` localizado.
+* Metadatos de versión confirmados.
+* Firma digital comprobada como `NotSigned`.
+* No se ha completado todavía la instalación.
+* No se ha realizado todavía el primer arranque.
+
+### OBJETIVO INMEDIATO
+
+Completar la instalación de Windows en el entorno de laboratorio,
+preferentemente en `E:` si el instalador permite seleccionar una ruta
+personalizada.
+
+Después:
+
+1. Primer arranque.
+2. Diagnóstico de Tauri/React.
+3. Diagnóstico de SQLite.
+4. Diagnóstico de credenciales.
+5. Accounts.
+6. Meta OAuth.
+7. Primer post real.
+
+### REGLA DE TRABAJO
+
+No volver a modificar código hasta que exista evidencia de un problema
+en la ejecución real.
+
+El build ya está verde.
+
+Ahora hay que arrancar el programa.
+
+```
+
+**Ese bloque completo reemplaza desde la línea 324 hasta el final.** No pegues nada debajo de él.
+
+Y sí, esta vez creo que ya podemos dejar de practicarle cirugía al pobre Brief. 😂
+
+Después de pegarlo, commit/push, y **no necesitamos revisar otra vez el documento aquí**. El siguiente chat puede tomar ese archivo como fotografía oficial del proyecto y continuar exactamente desde el instalador. 🏁
+```
