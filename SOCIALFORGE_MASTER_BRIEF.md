@@ -442,39 +442,6 @@ socialforge/
 
 # 7. SANDBOX
 
-> **Esta sección es reemplazable.**
->
-> No es una bitácora histórica.
->
-> Contiene únicamente el estado operativo que una IA necesita para continuar el trabajo actual.
->
-> Cuando termine una sesión, el usuario puede reemplazar este bloque por el `MASTER BRIEF UPDATE` generado por la IA.
-
-Después:
-
-1. compilar;
-2. verificar;
-3. corregir;
-4. volver a compilar;
-5. documentar el resultado en el Sandbox.
-
----
-
-# PRINCIPIO OPERATIVO
-
-**El Master Brief describe el estado actual.**
-
-**Git conserva la historia.**
-
-**El Sandbox contiene únicamente el trabajo operativo actual.**
-
-**El árbol y el Sandbox son las secciones destinadas a cambiar con frecuencia.**
-
-Todo lo demás debe cambiar únicamente cuando exista una decisión real de arquitectura, producto o proceso.
-
-##SANDBOX:
-
-##SANDBOX:
 ## ESTADO
 Núcleo técnico compilando correctamente en los tres sistemas objetivo.
 Se superó el milestone de compilación multiplataforma: GitHub Actions completó
