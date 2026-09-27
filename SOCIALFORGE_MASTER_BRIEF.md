@@ -450,64 +450,6 @@ socialforge/
 >
 > Cuando termine una sesión, el usuario puede reemplazar este bloque por el `MASTER BRIEF UPDATE` generado por la IA.
 
-## ESTADO
-Núcleo técnico en estabilización. Se confirmó, con evidencia directa
-(lectura de archivos reales y git log), que la sesión de edición web
-del 2026-09-26 (autor IndPlaneta, commits 02:05–08:23) iteró 3 veces
-sobre get_conn sin llegar a una versión final confiable, y que el
-reset local posterior (commit 0894230) no incorporó ni esa última
-iteración ni el trabajo de Keychain de sesiones anteriores.
-
-## CAMBIOS REALIZADOS
-- Eliminado .github/workflows/build-desktop.yml (duplicado de build.yml), commiteado.
-- Creado apps/desktop/src-tauri/migrations/004_link_url.sql
-  (contenido: ALTER TABLE posts ADD COLUMN link_url TEXT;)
-
-## CONFIRMADO
-- git branch/status/fetch: local sincronizado con origin/main, sin
-  commits remotos pendientes de traer.
-- 001_init.sql NO contiene link_url (verificado leyendo el archivo
-  real — corrige una afirmación previa incorrecta del brief).
-- main.rs (antes de este parche) importaba tauri_plugin_sql, no
-  declarado en Cargo.toml → error de compilación garantizado.
-- migrations/004_link_url.sql no existía pese a ser referenciado por
-  main.rs vía include_str! → segunda causa de fallo de compilación.
-
-## PENDIENTE
-- Ejecutar el build de GitHub Actions con estos dos cambios y obtener
-  el mensaje de error REAL (si lo hay) antes de decidir el cambio a
-  get_conn.
-- Reincorporar los comandos de Keychain (complete_facebook_connection,
-  list_connected_accounts, disconnect_account) — pospuesto
-  deliberadamente hasta que el núcleo compile limpio.
-- Confirmar si packages/core/src/index.ts sigue teniendo el campo
-  linkUrl en el tipo Post (no verificado en esta sesión).
-
-## BLOQUEADORES
-Ninguno nuevo. El bloqueador de compilación identificado tiene
-corrección aplicada, pendiente de verificar con un build real.
-
-## ARCHIVOS MODIFICADOS
-- .github/workflows/build-desktop.yml (eliminado)
-- apps/desktop/src-tauri/migrations/004_link_url.sql (creado)
-
-## GIT
-Working tree limpio tras los dos commits anteriores, main sincronizado
-con origin/main (a confirmar con git status después del push).
-
-## DECISIONES
-- No modificar get_conn ni Cargo.toml hasta ver el error real de
-  compilación — evitar repetir el patrón de 3 refactors sin
-  verificación que ya ocurrió una vez en este mismo archivo.
-- De aquí en adelante, cualquier cambio de código se entrega como
-  archivo aislado independiente, para reemplazo directo en local vía
-  VS Code, en vez de archivos completos reescritos por otra IA sin
-  visibilidad del historial completo.
-
-## PRÓXIMO PASO
-Correr el workflow de build en GitHub Actions y traer el log completo
-(éxito o error) antes de tocar get_conn o cualquier otro archivo.
-
 Después:
 
 1. compilar;
@@ -529,3 +471,80 @@ Después:
 **El árbol y el Sandbox son las secciones destinadas a cambiar con frecuencia.**
 
 Todo lo demás debe cambiar únicamente cuando exista una decisión real de arquitectura, producto o proceso.
+
+##SANDBOX:
+
+## ESTADO
+Núcleo técnico en estabilización. Se corrigió un segundo bloqueador de
+compilación (distinto al de migraciones): el workflow de build.yml usa
+sintaxis Bash en un paso `run:` que en el runner windows-latest se
+ejecuta con PowerShell por default, causando ParserError. Se agregó
+`shell: bash` explícito a ese paso.
+
+## CAMBIOS REALIZADOS
+- apps/desktop/src-tauri/src/main.rs reemplazado por versión con:
+  Keychain (keyring + reqwest), migraciones manuales vía PRAGMA
+  user_version (sin tauri_plugin_sql), rename_all="camelCase",
+  state.inner() en get_conn. Commit: 54d8d7c.
+- .github/workflows/build.yml: agregado `shell: bash` al paso
+  "Install frontend deps (auto)". Commit: 17fc95a.
+- Configurado alias de git local (`git subir` = add -A + commit +
+  push con mensaje genérico) para agilizar el flujo de subida desde
+  VS Code. Esto es config local de la máquina del usuario, no vive
+  en el repo.
+
+## CONFIRMADO
+- git log / git status verificados directamente en la terminal del
+  usuario: commit 17fc95a llegó a origin/main (push confirmado con
+  salida real de git, no supuesto).
+- El build anterior (antes de este fix) falló en los 3 runners
+  (windows, macos, ubuntu) con exit code 1. El error real de Windows
+  fue capturado: ParserError por sintaxis Bash en runner PowerShell.
+  Los errores de macOS/Ubuntu de ese mismo run NO se revisaron a
+  detalle todavía — NO CONFIRMADO si comparten la misma causa o son
+  distintos.
+
+## PENDIENTE
+- NO CONFIRMADO: si el build con el fix de `shell: bash` pasa limpio
+  en los 3 sistemas operativos. Falta correr el workflow de nuevo y
+  traer el log completo (no solo el resumen de Annotations).
+- Si windows-latest pasa pero macOS/Ubuntu siguen fallando, revisar
+  esos logs por separado — pueden tener causas distintas al de Windows.
+- Reincorporación de Keychain en main.rs (ya hecha en código, commit
+  54d8d7c) — su compilación real AÚN NO fue confirmada con un build
+  exitoso. No asumir que compila solo porque el código está subido.
+- Pantalla de Accounts en React (invoke a complete_facebook_connection,
+  list_connected_accounts, disconnect_account) — no iniciada.
+- Confirmar si packages/core/src/index.ts tiene el campo linkUrl en
+  el tipo Post — pendiente de verificar desde hace 2 sesiones.
+
+## BLOQUEADORES
+Ninguno confirmado como bloqueador activo en este momento — el último
+error conocido (ParserError de Windows) tiene fix aplicado y subido,
+pendiente de verificación con un build real.
+
+## ARCHIVOS MODIFICADOS
+- apps/desktop/src-tauri/src/main.rs (commit 54d8d7c)
+- .github/workflows/build.yml (commit 17fc95a)
+
+## GIT
+Working tree limpio, origin/main sincronizado, HEAD en 17fc95a.
+
+## DECISIONES
+- Los cambios de código se siguen entregando como archivos aislados
+  completos para reemplazo directo, no como parches sobre main.rs
+  reescrito por otra IA sin visibilidad del historial.
+- No se debe reintroducir tauri_plugin_sql bajo ninguna circunstancia
+  — ya causó al menos 2 regresiones de compilación documentadas.
+- No marcar nada como CONFIRMADO sin haber leído el archivo/log real
+  primero (regla ya existente en el Brief, reforzada por el error de
+  "001_init.sql ya contiene link_url" que resultó falso).
+
+## PRÓXIMO PASO
+1. Correr el workflow de build en GitHub Actions.
+2. Traer el log COMPLETO de cada uno de los 3 jobs (windows, macos,
+   ubuntu) — no solo el resumen de Annotations.
+3. Si los 3 pasan: continuar con la pantalla de Accounts en React.
+4. Si alguno falla: diagnosticar con el error real antes de proponer
+   cualquier cambio.
+
