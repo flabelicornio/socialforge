@@ -50,7 +50,7 @@ struct AccountSummary {
     connected_at: i64,
 }
 
-fn get_conn(state: &State<DbState>) -> std::sync::MutexGuard<'_, Connection> {
+fn get_conn<'a>(state: &'a State<'_, DbState>) -> std::sync::MutexGuard<'a, Connection> {
     state.inner().conn.lock().expect("db lock failed")
 }
 
