@@ -474,77 +474,185 @@ Todo lo demás debe cambiar únicamente cuando exista una decisión real de arqu
 
 ##SANDBOX:
 
+##SANDBOX:
 ## ESTADO
-Núcleo técnico en estabilización. Se corrigió un segundo bloqueador de
-compilación (distinto al de migraciones): el workflow de build.yml usa
-sintaxis Bash en un paso `run:` que en el runner windows-latest se
-ejecuta con PowerShell por default, causando ParserError. Se agregó
-`shell: bash` explícito a ese paso.
+Núcleo técnico compilando correctamente en los tres sistemas objetivo.
+Se superó el milestone de compilación multiplataforma: GitHub Actions completó
+exitosamente los builds de Windows, macOS y Ubuntu.
+
+La siguiente fase ya no es corregir compilación, sino realizar la primera
+validación funcional del artefacto Windows.
 
 ## CAMBIOS REALIZADOS
-- apps/desktop/src-tauri/src/main.rs reemplazado por versión con:
-  Keychain (keyring + reqwest), migraciones manuales vía PRAGMA
-  user_version (sin tauri_plugin_sql), rename_all="camelCase",
-  state.inner() en get_conn. Commit: 54d8d7c.
-- .github/workflows/build.yml: agregado `shell: bash` al paso
-  "Install frontend deps (auto)". Commit: 17fc95a.
-- Configurado alias de git local (`git subir` = add -A + commit +
-  push con mensaje genérico) para agilizar el flujo de subida desde
-  VS Code. Esto es config local de la máquina del usuario, no vive
-  en el repo.
+- `apps/desktop/src-tauri/src/main.rs`: corregido el lifetime de `get_conn`.
+  La firma quedó:
+  `fn get_conn<'a>(state: &'a State<'_, DbState>) -> std::sync::MutexGuard<'a, Connection>`
+- Cambio confirmado mediante `git diff` y posteriormente commit/push.
+- Commit del fix:
+  `02b655a Fix database connection lifetime`
+- `.github/workflows/build.yml`: mantiene el fix previo que fuerza
+  `shell: bash` en el paso de instalación de frontend.
+- Se eliminó previamente el workflow redundante `build-desktop.yml`.
+- Se generó y descargó correctamente el artefacto Windows desde GitHub Actions.
+- Se realizó extracción administrativa del MSI sin instalar SocialForge.
 
 ## CONFIRMADO
-- git log / git status verificados directamente en la terminal del
-  usuario: commit 17fc95a llegó a origin/main (push confirmado con
-  salida real de git, no supuesto).
-- El build anterior (antes de este fix) falló en los 3 runners
-  (windows, macos, ubuntu) con exit code 1. El error real de Windows
-  fue capturado: ParserError por sintaxis Bash en runner PowerShell.
-  Los errores de macOS/Ubuntu de ese mismo run NO se revisaron a
-  detalle todavía — NO CONFIRMADO si comparten la misma causa o son
-  distintos.
+### GitHub Actions
+Los tres jobs del workflow terminaron en verde:
+- Windows: CONFIRMADO
+- macOS: CONFIRMADO
+- Ubuntu 22.04: CONFIRMADO
+
+### Ubuntu
+El build produjo correctamente:
+- `.deb`
+- `.rpm`
+- `.AppImage`
+
+El artifact de Ubuntu fue cargado correctamente.
+
+### Windows
+Artifact:
+`socialforge-windows-latest`
+
+Artifact ID:
+`10922008578`
+
+Tamaño aproximado:
+`7,755,873 bytes`
+
+El ZIP fue descargado localmente como:
+`E:\socialforge-windows-latest.zip`
+
+El ZIP fue extraído a:
+`E:\socialforge-test`
+
+Contenido confirmado:
+- `release\bundle\msi\SocialForge_0.1.0_x64_en-US.msi`
+- `release\bundle\nsis\SocialForge_0.1.0_x64-setup.exe`
+
+Tamaños confirmados:
+- MSI: `4,710,400 bytes`
+- NSIS: `3,277,129 bytes`
+
+### MSI
+Se realizó extracción administrativa mediante `msiexec /a` sin instalar
+SocialForge.
+
+Destino:
+`E:\socialforge-msi-extracted`
+
+Contenido relevante confirmado:
+`E:\socialforge-msi-extracted\PFiles\SocialForge\socialforge.exe`
+
+Ejecutable:
+- Tamaño: `12,980,224 bytes`
+- FileVersion: `0.1.0`
+- ProductVersion: `0.1.0`
+- ProductName: `SocialForge`
+- FileDescription: `SocialForge`
+- CompanyName: `latam`
+- Debug: `False`
+- PreRelease: `False`
+
+### Firma
+El MSI y el instalador NSIS aparecen como:
+`Status: NotSigned`
+
+Esto NO se considera un error de compilación ni un bloqueador para
+la prueba de desarrollo actual.
+
+### Estado del instalador
+El instalador MSI fue iniciado y actualmente muestra el flujo inicial
+del instalador con el botón `Next`.
+
+NO SE HA COMPLETADO TODAVÍA LA INSTALACIÓN.
+
+### Laboratorio local
+Se están utilizando las siguientes rutas en la unidad `E:` para mantener
+los artefactos y pruebas separados del entorno principal:
+
+`E:\socialforge-test`
+`E:\socialforge-msi-extracted`
+
+La intención de utilizar `E:` es mantener aislados los artefactos y
+facilitar la eliminación/recreación del entorno de prueba.
+
+Esto NO implica que SocialForge sea una aplicación portable ni que todos
+sus datos, SQLite o credenciales permanezcan necesariamente en `E:`.
 
 ## PENDIENTE
-- NO CONFIRMADO: si el build con el fix de `shell: bash` pasa limpio
-  en los 3 sistemas operativos. Falta correr el workflow de nuevo y
-  traer el log completo (no solo el resumen de Annotations).
-- Si windows-latest pasa pero macOS/Ubuntu siguen fallando, revisar
-  esos logs por separado — pueden tener causas distintas al de Windows.
-- Reincorporación de Keychain en main.rs (ya hecha en código, commit
-  54d8d7c) — su compilación real AÚN NO fue confirmada con un build
-  exitoso. No asumir que compila solo porque el código está subido.
-- Pantalla de Accounts en React (invoke a complete_facebook_connection,
-  list_connected_accounts, disconnect_account) — no iniciada.
-- Confirmar si packages/core/src/index.ts tiene el campo linkUrl en
-  el tipo Post — pendiente de verificar desde hace 2 sesiones.
+- Completar la primera instalación controlada de SocialForge.
+- Determinar si el MSI permite seleccionar una ubicación personalizada
+  como `E:\SocialForge-Install`.
+- Ejecutar SocialForge por primera vez.
+- Verificar que la ventana Tauri/React arranque correctamente.
+- Verificar comportamiento de SQLite local.
+- Verificar Keychain/Credential Manager de Windows.
+- Verificar la interfaz y funcionalidad de Accounts.
+- Verificar el flujo OAuth de Meta.
+- Verificar conexión de Facebook/Instagram.
+- Intentar el primer post real.
+- Confirmar funcionalmente `linkUrl` en `packages/core/src/index.ts`.
+- Revisar cualquier problema funcional solamente después de ejecutar
+  el artefacto real.
 
 ## BLOQUEADORES
-Ninguno confirmado como bloqueador activo en este momento — el último
-error conocido (ParserError de Windows) tiene fix aplicado y subido,
-pendiente de verificación con un build real.
+Ninguno confirmado.
+
+El proyecto ya supera la fase de compilación multiplataforma.
+
+No existe actualmente evidencia que justifique realizar nuevas
+modificaciones de código antes de ejecutar el artefacto Windows.
 
 ## ARCHIVOS MODIFICADOS
-- apps/desktop/src-tauri/src/main.rs (commit 54d8d7c)
-- .github/workflows/build.yml (commit 17fc95a)
+- `apps/desktop/src-tauri/src/main.rs`
+  - Fix de lifetime de `get_conn`
+- `.github/workflows/build.yml`
+  - Fix previo de `shell: bash`
+- `build-desktop.yml`
+  - Eliminado previamente por ser workflow redundante
+
+No se realizaron modificaciones adicionales al código durante la
+validación del artefacto Windows.
 
 ## GIT
-Working tree limpio, origin/main sincronizado, HEAD en 17fc95a.
+Rama:
+`main`
+
+Commit confirmado:
+`02b655a Fix database connection lifetime`
+
+Push confirmado:
+`origin/main`
+
+El commit anterior al fix era:
+`d716b78`
+
+El cambio enviado fue exactamente una modificación de una línea en
+`main.rs`.
 
 ## DECISIONES
-- Los cambios de código se siguen entregando como archivos aislados
-  completos para reemplazo directo, no como parches sobre main.rs
-  reescrito por otra IA sin visibilidad del historial.
-- No se debe reintroducir tauri_plugin_sql bajo ninguna circunstancia
-  — ya causó al menos 2 regresiones de compilación documentadas.
-- No marcar nada como CONFIRMADO sin haber leído el archivo/log real
-  primero (regla ya existente en el Brief, reforzada por el error de
-  "001_init.sql ya contiene link_url" que resultó falso).
+- No realizar más cambios de código solamente por anticipación.
+- La compilación multiplataforma ya está confirmada.
+- La siguiente validación debe hacerse sobre el artefacto Windows real.
+- Mantener los artefactos de prueba en `E:` durante esta fase.
+- No asumir que la aplicación es portable solamente porque puede
+  instalarse en una ruta personalizada.
+- No instalar Visual Studio ni herramientas adicionales únicamente para
+  ejecutar `dumpbin`.
+- `NotSigned` se acepta temporalmente durante desarrollo.
+- Mantener el MSI y el ejecutable extraído disponibles como referencia
+  hasta terminar la primera prueba funcional.
+- La prioridad inmediata es:
+  instalación → primer arranque → SQLite/Keychain → Accounts →
+  Meta OAuth → primer post real.
 
 ## PRÓXIMO PASO
-1. Correr el workflow de build en GitHub Actions.
-2. Traer el log COMPLETO de cada uno de los 3 jobs (windows, macos,
-   ubuntu) — no solo el resumen de Annotations.
-3. Si los 3 pasan: continuar con la pantalla de Accounts en React.
-4. Si alguno falla: diagnosticar con el error real antes de proponer
-   cualquier cambio.
-
+1. Continuar el instalador MSI desde la pantalla actual.
+2. Verificar si permite seleccionar una ubicación personalizada en `E:`.
+3. Instalar SocialForge en el entorno de prueba.
+4. Ejecutar la aplicación.
+5. Registrar cualquier comportamiento o error real.
+6. No modificar código hasta tener evidencia del comportamiento funcional.
+7. Si el arranque es correcto, continuar con Accounts y Meta OAuth.
