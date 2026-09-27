@@ -1,835 +1,930 @@
 # SOCIALFORGE MASTER BRIEF
 
-**Proyecto:** SocialForge by LaTAM Studios
-**Slogan:** Your social media. Your machine. Your data.
-**Estado del documento:** v1
-**Última actualización:** 2026-09-26
+## Documento maestro de continuidad, dirección de proyecto y registro técnico
 
----
+**Fecha de corte:** 27 de septiembre de 2026\
+**Responsable de producto y propietario:** Ale (Alejandro)\
+**Dirección de proyecto y coordinación técnica en ChatGPT:** asistente,
+como jefa de proyecto\
+**Herramienta de implementación asistida:** Claude, bajo tareas
+delimitadas y revisables\
+**Estado actual:** Build Windows #31 abre correctamente; interfaz
+todavía es un placeholder.\
+**Prioridad inmediata:** convertir SocialForge en una aplicación útil,
+comenzando por inspeccionar la UI existente y construir el primer flujo
+local de publicaciones.
+
+------------------------------------------------------------------------
+
+# 0. INSTRUCCIÓN DE RESURRECCIÓN
+
+Si se pierde o termina una conversación, cargar este brief y continuar
+desde el estado aquí registrado. No repetir investigaciones ya resueltas
+salvo que aparezca evidencia nueva.
+
+**Frase de continuidad:**
+
+> SocialForge ya arranca. No estamos intentando revivirlo. Estamos
+> construyendo lo que falta.
+
+La fuente de verdad del código es:
 
-# 1. QUÉ ES SOCIALFORGE
+`C:\Users\alejh\OneDrive\Docs-ForLatam\socialforge`
 
-SocialForge es una aplicación de gestión de redes sociales orientada principalmente a pequeñas empresas, freelancers y agencias de Latinoamérica.
+No usar carpetas de extracción o instaladores como si fueran el
+repositorio fuente.
 
-Su propuesta central es un modelo **local-first**:
+El siguiente paso al retomar es inspeccionar la UI y el frontend
+actuales desde el repositorio verdadero, identificar sus componentes y
+comandos existentes, y planear el primer flujo funcional sin inventar
+una arquitectura paralela.
 
-> Los datos de trabajo del usuario permanecen en su propio equipo.
+------------------------------------------------------------------------
 
-SocialForge busca ofrecer funciones comparables a herramientas como Buffer, Hootsuite o Metricool, pero con una arquitectura diferente.
+# 1. DIRECCIÓN DE PROYECTO Y FORMA DE TRABAJO
 
-El calendario, publicaciones, cola de publicación y scheduler viven localmente en el equipo del usuario mediante SQLite dentro de la aplicación Tauri.
+Ale ha designado a ChatGPT como jefa de proyecto para SocialForge.
+Claude será utilizado como herramienta de implementación bajo
+instrucciones específicas y acotadas.
 
-La nube no debe convertirse en el lugar permanente donde viven las publicaciones del usuario.
+## Responsabilidades de la dirección del proyecto
 
-## Objetivos principales
+-   Mantener una visión coherente del producto y su arquitectura.
+-   Dividir el trabajo en tareas pequeñas, verificables y ordenadas.
+-   Inspeccionar el estado real del repositorio antes de ordenar
+    cambios.
+-   Especificar archivos, alcance, criterios de aceptación y pruebas
+    para cada tarea.
+-   Evitar cambios colaterales y rediseños no solicitados.
+-   Revisar los diffs, resultados de compilación y pruebas que Ale
+    comparta.
+-   Mantener actualizado este brief con hitos, decisiones, incidentes y
+    estado.
+-   Dar instrucciones paso a paso, especialmente para PowerShell y VS
+    Code.
+-   No afirmar que una tarea está terminada hasta contar con evidencia
+    de compilación/prueba adecuada.
 
-* Crear y gestionar publicaciones.
-* Administrar contenido multimedia.
-* Programar publicaciones localmente.
-* Conectar cuentas de redes sociales.
-* Publicar mediante las APIs oficiales de cada plataforma.
-* Gestionar múltiples cuentas y espacios de trabajo.
-* Ofrecer funciones diferenciadas para Free, Pro y Agency.
-* Incorporar Content Engine con IA en los planes correspondientes.
-* Ofrecer Ads Reporting como add-on independiente.
-* Mantener el control de los datos del usuario en su máquina.
+## Papel de Ale
 
-## Modelo de negocio
+Ale es el propietario del producto y toma las decisiones de producto. No
+es necesario que programe ni que conozca internamente Rust, React o
+Tauri. Las instrucciones operativas deben ser claras, copiables y de una
+acción a la vez cuando haya riesgo técnico.
 
-SocialForge se distribuye como una aplicación instalable.
+## Papel de Claude
 
-No existe un plan Free basado en una versión cloud de la aplicación.
+Claude puede inspeccionar o modificar el repositorio cuando Ale le
+proporcione las instrucciones. No debe recibir encargos abiertos como
+"construye toda la aplicación" sin alcance ni criterios.
 
-Los planes comparten la misma aplicación y las diferencias se controlan mediante licencias y entitlements.
+Cada tarea que se le delegue debe incluir:
 
-### Free
+1.  Contexto mínimo relevante.
+2.  Objetivo concreto.
+3.  Archivos que puede inspeccionar o modificar.
+4.  Restricciones explícitas.
+5.  Criterios de aceptación.
+6.  Pruebas que debe ejecutar.
+7.  Resumen de archivos modificados y resultados.
+8.  Diff o evidencia verificable para revisión.
 
-* Funcionamiento local.
-* Cuentas limitadas.
-* Un workspace.
-* Backup/exportación manual.
-* Ads Reporting como add-on independiente.
-* Sin Content Engine IA.
+Claude no debe cambiar arquitectura, esquema de datos, dependencias,
+nombres de producto ni archivos fuera del alcance sin autorización
+previa.
 
-### Pro
+------------------------------------------------------------------------
 
-* Funcionamiento local.
-* Más cuentas.
-* Múltiples workspaces.
-* Backup automático.
-* Ads Reporting opcional.
-* Content Engine.
+# 2. VISIÓN DEL PRODUCTO
 
-### Agency
+SocialForge es una aplicación local-first para gestionar, preparar y
+programar publicaciones en redes sociales.
 
-* Todas las cuentas necesarias.
-* Múltiples workspaces.
-* Equipos.
-* Backup automático.
-* Ads Reporting incluido.
-* Content Engine.
+La intención es ofrecer una alternativa de costo accesible frente a
+servicios como Metricool o Hootsuite, conservando el control del usuario
+sobre sus datos y su flujo de programación.
 
----
+Principios de producto:
 
-# 2. ARQUITECTURA
+-   Aplicación de escritorio.
+-   Datos y programación principalmente locales.
+-   SQLite local como almacenamiento principal.
+-   Scheduler local, no dependiente de un servidor remoto para
+    funcionar.
+-   Backend remoto mínimo y deliberado.
+-   Integración inicial prevista con Facebook Pages e Instagram.
+-   Tokens y secretos fuera de SQLite, usando Keychain/almacenamiento
+    seguro del sistema operativo.
+-   Cloudflare Worker/D1 para servicios que sí requieran backend:
+    licencias, entitlements, callbacks OAuth, webhooks y funciones
+    remotas necesarias.
+-   Diseño que permita evolucionar sin acoplar la operación principal a
+    un SaaS central.
 
-## Regla arquitectónica principal
+La promesa de marca que aparece actualmente en la aplicación es:
 
-**SocialForge es local-first.**
+**"Tus redes sociales. Tu máquina. Tus datos."**
 
-Las publicaciones, calendario, cola y scheduler pertenecen al cliente local.
+------------------------------------------------------------------------
 
-### SQLite local
+# 3. FUENTE DE VERDAD Y ORÍGENES
 
-SQLite dentro de Tauri almacena:
+## Repositorio local verdadero
 
-* workspaces
-* cuentas
-* publicaciones
-* multimedia
-* jobs
-* settings
-* cache local necesaria
+`C:\Users\alejh\OneDrive\Docs-ForLatam\socialforge`
 
-Los tokens de acceso de redes sociales **no se almacenan permanentemente en SQLite**.
+Este es el repositorio Git que se sincroniza con GitHub y desde el cual
+se construyen los instaladores.
 
-Se almacenan cifrados mediante el Keychain/Credential Manager del sistema operativo.
+## GitHub remoto
 
-## Cloudflare Worker + D1
+`https://github.com/flabelicornio/socialforge.git`
 
-El Worker es un backend delgado.
+Remote:
 
-Puede encargarse de:
+`origin https://github.com/flabelicornio/socialforge.git`
 
-* licencias
-* validación de licencias
-* OAuth exchange
-* secretos OAuth que no deben llegar al cliente
-* manifest de actualizaciones
-* webhook de Lemon Squeezy
-* entitlements
-* proxy de Ads Reporting cuando corresponda
-
-El Worker **NO** debe convertirse en el scheduler ni en el publisher de SocialForge.
-
-No se debe crear una tabla de publicaciones programadas en D1 ni un Cron que publique contenido salvo que se tome explícitamente una nueva decisión arquitectónica.
-
-Si una propuesta requiere que las publicaciones del usuario pasen a almacenarse y programarse en la nube, debe identificarse explícitamente como:
-
-> **ESTO CAMBIA EL MODELO DE NEGOCIO HACIA SAAS EN LA NUBE.**
-
-## Fuente de verdad del modelo Post
-
-La definición compartida está en:
-
-`packages/core/src/index.ts`
-
-Debe existir un único modelo `Post`, no múltiples tipos paralelos.
-
-Actualmente:
-
-```ts
-export interface Post {
-  id: string;
-  text: string;
-  mediaIds: string[];
-  platforms: SocialPlatform[];
-  scheduledFor: number | null;
-  status: JobStatus;
-  createdAt: number;
-  updatedAt: number;
-  failureReason?: string;
-}
-```
-
-Un post puede dirigirse a múltiples plataformas.
-
-El post pertenece a un `workspace_id` local.
-
-La licencia no es parte del modelo de contenido.
-
----
-
-# 3. REGLAS PARA CUALQUIER IA
-
-Cualquier IA que trabaje sobre SocialForge debe leer este archivo antes de analizar, modificar o proponer cambios estructurales.
-
-## Antes de modificar
-
-La IA debe:
-
-1. Leer este Master Brief.
-2. Inspeccionar el código real del repositorio.
-3. Identificar si la funcionalidad propuesta ya existe.
-4. Buscar si ya existe una tabla, endpoint, tipo, comando o mecanismo equivalente.
-5. Verificar que la propuesta respete la arquitectura local-first.
-6. Diferenciar entre:
-
-   * problema real;
-   * propuesta de solución;
-   * decisión arquitectónica.
-
-Una propuesta de otra IA no debe considerarse correcta simplemente porque resuelva un error de compilación.
-
-## Nuevas tablas, endpoints o tipos
-
-Antes de crear cualquiera de ellos, comprobar si ya existe un equivalente.
-
-No duplicar modelos ni lógica de negocio.
-
-Si la solución propuesta rompe la arquitectura local-first, señalarlo explícitamente antes de implementarla.
-
-## Compilación
-
-Un error de compilación debe solucionarse de acuerdo con la arquitectura existente.
-
-No modificar la arquitectura simplemente para hacer desaparecer un error.
-
-Una solución técnicamente válida pero incompatible con este documento debe considerarse una propuesta de cambio arquitectónico, no una corrección automática.
-
-## Migraciones
-
-Las migraciones SQLite son incrementales y numeradas.
-
-Cada migración debe permanecer como archivo independiente.
-
-No fusionar o reescribir migraciones históricas simplemente para ocultar un problema actual.
-
-Antes de agregar una migración, verificar el estado real de la base y las migraciones existentes.
-
-## OAuth y secretos
-
-Nunca colocar:
-
-* client secrets;
-* access tokens;
-* refresh tokens;
-* API keys;
-* credenciales privadas
-
-en este documento ni en código que deba quedar público.
-
-Los secretos deben permanecer en los mecanismos apropiados de configuración segura o Keychain.
-
-## Rol de las IAs
-
-Las IAs pueden:
-
-* analizar;
-* proponer;
-* implementar;
-* revisar;
-* detectar inconsistencias.
-
-Pero una IA no debe asumir que una propuesta externa es una decisión arquitectónica.
-
-El Master Brief y el código real son las referencias operativas.
-
----
-
-## CIERRE OBLIGATORIO DE SESIÓN
-
-Cuando el usuario indique que la sesión termina o solicite el estado para actualizar el Master Brief, entregar un bloque:
-
-`MASTER BRIEF UPDATE`
-
-Debe contener:
-
-* **ESTADO**
-* **CAMBIOS REALIZADOS**
-* **CONFIRMADO**
-* **PENDIENTE**
-* **BLOQUEADORES**
-* **ARCHIVOS MODIFICADOS**
-* **GIT**
-* **DECISIONES**
-* **PRÓXIMO PASO**
-
-No narrar la conversación.
-
-No inventar resultados.
-
-Si algo no fue comprobado, marcarlo como:
-
-`NO CONFIRMADO`
-
-El objetivo es que el usuario pueda reemplazar directamente el contenido de `SANDBOX` por este bloque.
-
----
-
-# 4. DECISIONES Y RESTRICCIONES
-
-## Datos
-
-Los datos de contenido pertenecen al usuario y viven localmente.
-
-## Licencias
-
-Las licencias pertenecen al sistema de negocio y son gestionadas por el Worker.
-
-Una licencia no sustituye a `workspace_id`.
-
-## Ads Reporting
-
-Ads Reporting es un add-on independiente.
-
-La tabla `entitlements` en D1 representa el estado del entitlement.
-
-Las APIs de marketing no deben solicitar permisos innecesarios durante el MVP.
-
-## Meta
-
-La integración actual utiliza:
-
-* Facebook Login for Business.
-* `config_id`.
-* Graph API v26.0.
-* OAuth exchange mediante Worker.
-* Tokens finales protegidos mediante Keychain.
-
-No utilizar el flujo clásico basado en `scope` para esta integración Business.
-
-## Links
-
-Facebook puede utilizar el campo nativo `link`.
-
-Instagram no dispone de enlaces clicables equivalentes mediante la publicación normal, por lo que el enlace puede incorporarse al caption.
-
-`link_url` forma parte del modelo de publicación.
-
-## Música y stickers
-
-La incorporación mediante edición local y procesamiento multimedia es técnicamente posible, pero representa una funcionalidad adicional importante.
-
-No debe considerarse una modificación menor ni asumirse como parte del MVP hasta tomar una decisión explícita.
-
-## Plataformas
-
-Orden actual:
-
-1. Meta, Facebook + Instagram.
-2. TikTok.
-3. LinkedIn.
-4. X.
-5. YouTube.
-6. Pinterest.
-7. Threads.
-
-TikTok actualmente tiene las restricciones propias de su estado de acceso/auditoría.
-
-LinkedIn requiere el acceso correspondiente de su plataforma.
-
----
-
-# 5. ESTADO ACTUAL
-
-**Fecha:** 2026-09-26
-
-**Rama principal:** `main`
-
-**Commit actual:**
-
-`0894230 Update SocialForge project`
-
-**GitHub:**
-
-`origin/main`
-
-**Estado Git conocido:**
-
-Working tree limpio y rama sincronizada con `origin/main`.
-
-## Estado del proyecto
-
-La arquitectura base está definida.
-
-El repositorio corregido ya fue integrado en `main`.
-
-La integración OAuth de Meta existe y se encuentra en desarrollo funcional.
-
-La aplicación Tauri utiliza SQLite local.
-
-El Worker existe como backend delgado.
-
-## Situación actual de compilación
-
-El proyecto todavía requiere revisión antes de considerarse estructuralmente estable.
-
-Se detectaron al menos dos puntos que deben investigarse:
-
-### 1. Migración 004
-
-`apps/desktop/src-tauri/src/main.rs` referencia:
-
-`migrations/004_link_url.sql`
-
-El archivo actualmente no está presente en el proyecto corregido.
-
-Importante:
-
-`001_init.sql` ya contiene:
-
-```sql
-link_url TEXT
-```
-
-Por lo tanto, **NO crear automáticamente una migración 004 que vuelva a ejecutar `ALTER TABLE posts ADD COLUMN link_url TEXT`** sin revisar primero la estrategia correcta de migraciones.
-
-Este punto está pendiente.
-
-### 2. Lifetime de `get_conn`
-
-Actualmente existe:
-
-```rust
-fn get_conn(state: &State<DbState>) -> std::sync::MutexGuard<'_, Connection> {
-    state.inner().conn.lock().expect("db lock failed")
-}
-```
-
-Una herramienta externa propuso modificar la firma para introducir lifetimes explícitos.
-
-La propuesta todavía no ha sido aceptada.
-
-Debe verificarse contra el código real, la versión de Tauri y el comportamiento esperado antes de modificarla.
-
----
-
-# 6. ÁRBOL ACTUAL
-
-```text
-socialforge/
-├── apps/
-│   ├── desktop/
-│   │   └── src-tauri/
-│   │       ├── migrations/
-│   │       │   ├── 001_init.sql
-│   │       │   ├── 002_ads_addon.sql
-│   │       │   ├── 003_language.sql
-│   │       │   └── 005_account_external_id.sql
-│   │       ├── src/
-│   │       │   └── main.rs
-│   │       └── Cargo.toml
-│   │
-│   └── demo-web/
-│
-├── packages/
-│   └── core/
-│       └── src/
-│           └── index.ts
-│
-├── worker/
-│   └── ...
-│
-├── design/
-│   └── ...
-│
-├── docs/
-│   └── ...
-│
-├── .github/
-│   └── ...
-│
-├── README.md
-├── meta-config-context.md
-├── package.json
-└── .gitignore
-```
-
-**Nota:** este árbol representa el estado conocido al crear este Master Brief. Debe actualizarse cuando cambie realmente la estructura del repositorio.
-
----
-
-# 7. SANDBOX
-
-***Aqui voy a pegar todo el ultimo mensaje de cada actualizacion a pesar de la interpretacion de la ia por "actualizar el brief" para que podamos comparar con la estructura total****:
-
-
-Sí, tienes toda la razón. 😄 Estamos haciendo demasiada cirugía por partes para algo que originalmente era simplemente **actualizar el estado del Brief**.
-
-Hagámoslo limpio: **desde la línea 324 hasta el final**, reemplaza todo por este bloque completo. Así no hay riesgo de dejar pedazos del estado anterior mezclados con el nuevo.
-
-````text
-## ESTADO ACTUAL
-
-**Commit actual:**
-
-`02b655a Fix database connection lifetime`
-
-**GitHub:**
-
-`origin/main`
-
-**Estado Git conocido:**
-
-La rama `main` contiene el fix de lifetime y el build multiplataforma
-posterior confirmó que el proyecto compila correctamente en los tres
-sistemas objetivo.
-
-## Situación del proyecto
-
-La arquitectura base está definida y el proyecto ha superado el milestone
-de compilación multiplataforma.
-
-La aplicación Tauri utiliza SQLite local.
-
-El Worker existe como backend delgado.
-
-La integración OAuth de Meta existe y se encuentra en desarrollo funcional.
-
-La siguiente fase ya no es resolver problemas de compilación, sino validar
-el comportamiento real de la aplicación Windows.
-
-## Compilación multiplataforma
-
-GitHub Actions confirmó correctamente los siguientes targets:
-
-- Windows
-- macOS
-- Ubuntu 22.04
-
-Los tres jobs terminaron en verde.
-
-### Ubuntu
-
-El build produjo correctamente:
-
-- `.deb`
-- `.rpm`
-- `.AppImage`
-
-El artifact correspondiente fue cargado correctamente.
-
-### Windows
-
-Se generó correctamente el artifact:
-
-`socialforge-windows-latest`
-
-Artifact ID:
-
-`10922008578`
-
-El artifact fue descargado localmente como:
-
-`E:\socialforge-windows-latest.zip`
-
-El ZIP fue extraído en:
-
-`E:\socialforge-test`
-
-Contenido confirmado:
-
-`E:\socialforge-test\release\bundle\msi\SocialForge_0.1.0_x64_en-US.msi`
-
-`E:\socialforge-test\release\bundle\nsis\SocialForge_0.1.0_x64-setup.exe`
-
-Tamaños confirmados:
-
-- MSI: `4,710,400 bytes`
-- NSIS: `3,277,129 bytes`
-
-## MSI y ejecutable Windows
-
-Se realizó una extracción administrativa del MSI mediante `msiexec /a`
-sin instalar todavía SocialForge.
-
-Destino:
-
-`E:\socialforge-msi-extracted`
-
-El ejecutable fue encontrado en:
-
-`E:\socialforge-msi-extracted\PFiles\SocialForge\socialforge.exe`
-
-Características confirmadas:
-
-- Tamaño: `12,980,224 bytes`
-- FileVersion: `0.1.0`
-- ProductVersion: `0.1.0`
-- ProductName: `SocialForge`
-- FileDescription: `SocialForge`
-- CompanyName: `latam`
-- Debug: `False`
-- PreRelease: `False`
-
-Esto confirma que el bundle Windows contiene un ejecutable real de
-SocialForge y que el MSI puede ser procesado correctamente.
-
-## Firma digital
-
-El MSI y el instalador NSIS aparecen como:
-
-`Status: NotSigned`
-
-Esto no constituye un error de compilación y no bloquea la validación
-local durante desarrollo.
-
-La firma de código se considera una tarea posterior para distribución
-pública.
-
-## Fix de base de datos
-
-El error de compilación relacionado con el lifetime de `get_conn` fue
-corregido en:
-
-`apps/desktop/src-tauri/src/main.rs`
-
-La firma actual es:
-
-```rust
-fn get_conn<'a>(state: &'a State<'_, DbState>) -> std::sync::MutexGuard<'a, Connection>
-````
-
-El cambio fue incluido en:
-
-`02b655a Fix database connection lifetime`
-
-El build posterior confirmó que este problema quedó resuelto.
-
-## Migraciones
-
-La migración:
-
-`004_link_url.sql`
-
-existe en el repositorio.
-
-No crear otra migración duplicada para `link_url` sin revisar primero
-el estado real de las migraciones.
-
-## Workflow de build
-
-`.github/workflows/build.yml` mantiene el fix previo que fuerza:
-
-`shell: bash`
-
-en el paso de instalación de dependencias frontend.
-
-El workflow redundante:
-
-`build-desktop.yml`
-
-fue eliminado previamente.
-
-El workflow principal de build es el que produjo los artifacts
-multiplataforma confirmados.
-
-## Laboratorio local
-
-Durante esta etapa se están utilizando las siguientes rutas:
-
-`E:\socialforge-test`
-
-`E:\socialforge-msi-extracted`
-
-La intención es mantener los artifacts y las pruebas separados del
-entorno principal y facilitar su eliminación o recreación.
-
-Esto NO implica que SocialForge sea una aplicación portable ni que
-SQLite, configuración o credenciales permanezcan necesariamente en `E:`.
-
-## Instalador
-
-El instalador MSI fue abierto y actualmente muestra el flujo inicial
-del instalador con el botón `Next`.
-
-La instalación todavía NO ha sido completada.
-
-Se decidió continuar la prueba utilizando `E:` como entorno de laboratorio
-para reducir el impacto sobre el sistema principal.
-
-## PENDIENTE
-
-### Primera validación funcional de Windows
-
-* Continuar el instalador MSI.
-* Determinar si permite seleccionar una ubicación personalizada en `E:`.
-* Instalar SocialForge en el entorno de prueba.
-* Ejecutar SocialForge por primera vez.
-* Verificar que la ventana Tauri/React arranque correctamente.
-* Verificar SQLite local.
-* Verificar Keychain/Credential Manager de Windows.
-* Verificar la pantalla de Accounts.
-* Verificar el flujo OAuth de Meta.
-* Verificar conexión de Facebook e Instagram.
-* Intentar el primer post real.
-* Confirmar funcionalmente `linkUrl` en `packages/core/src/index.ts`.
-
-## BLOQUEADORES
-
-Ninguno confirmado.
-
-La compilación multiplataforma ya está confirmada.
-
-No realizar nuevas modificaciones de código solamente por anticipación.
-
-Primero ejecutar el artefacto real y diagnosticar cualquier problema
-funcional observado.
-
-## DECISIONES ACTUALES
-
-* No modificar código solamente por anticipación.
-* La compilación de Windows, macOS y Ubuntu está confirmada.
-* La siguiente validación debe hacerse sobre el artefacto Windows real.
-* Mantener los artifacts de prueba en `E:` durante esta fase.
-* No asumir que SocialForge es portable solamente porque pueda instalarse
-  en una ruta personalizada.
-* No instalar Visual Studio únicamente para obtener `dumpbin`.
-* `NotSigned` se acepta temporalmente durante desarrollo.
-* Mantener el MSI y el ejecutable extraído como referencia hasta terminar
-  la primera prueba funcional.
-* No borrar todavía `E:\socialforge-test` ni
-  `E:\socialforge-msi-extracted`.
-* No cambiar arquitectura antes de completar la primera prueba funcional.
-
-## GIT
-
-Rama:
+Branch de trabajo conocida:
 
 `main`
 
-Commit actual:
+## Último estado Git registrado
 
-`02b655a Fix database connection lifetime`
+Commit:
 
-Push a:
+`5ea2556786807b12ea8b0026189d717a41404553`
 
-`origin/main`
+Abreviado: `5ea2556`
 
-confirmado.
+Mensaje: `actualizacion`
 
-## ARCHIVOS Y CAMBIOS RELEVANTES
+Fecha: `2026-09-26 21:59:57 -0600`
 
-### `apps/desktop/src-tauri/src/main.rs`
+Autor: `flabelicornio`
 
-Fix de lifetime de `get_conn`.
+En la comprobación realizada, el repositorio estaba limpio y alineado
+con `origin/main`. Antes de nuevos cambios, volver a comprobar
+`git status` y el HEAD real.
 
-### `.github/workflows/build.yml`
+## Carpetas de artefactos o copias que NO son fuente de verdad
 
-Fix previo de `shell: bash` para el paso de instalación de frontend.
+Durante el diagnóstico se usaron ubicaciones en E:, entre ellas:
 
-### `build-desktop.yml`
+-   `E:\socialforge-test`
+-   `E:\socialforge-test\artifact31`
+-   `E:\socialforge-extracted\socialforge`
+-   `E:\sclf`
+-   `E:\socialforge-msi-extracted`
+-   `E:\SocialForge-Install`
 
-Workflow redundante eliminado previamente.
+Pueden contener instaladores, extracciones o copias de diagnóstico. No
+usarlas para modificar el código fuente.
 
-### `004_link_url.sql`
+Una extracción antigua carecía de `004_link_url.sql` aunque su `main.rs`
+lo referenciaba. Por ello, siempre inspeccionar el repositorio verdadero
+antes de sacar conclusiones.
 
-Migración existente para `link_url`.
+------------------------------------------------------------------------
 
-## PRÓXIMO PASO
+# 4. ESTRUCTURA DEL REPOSITORIO
 
-El siguiente paso no es otro build.
+En la raíz se observaron:
 
-Es:
+-   `.git`
+-   `.github`
+-   `apps`
+-   `design`
+-   `docs`
+-   `packages`
+-   `worker`
+-   `.gitignore`
+-   `meta-config-context.md`
+-   `package.json`
+-   `README.md`
+-   `SOCIALFORGE_MASTER_BRIEF.md`
 
-```text
-MSI
- ↓
-instalación controlada
- ↓
-primer arranque
- ↓
-Tauri / React
- ↓
-SQLite
- ↓
-Keychain / Credential Manager
- ↓
-Accounts
- ↓
-Meta OAuth
- ↓
-Facebook / Instagram
- ↓
-primer post real
+Rutas conocidas:
+
+-   Aplicación desktop: `apps\desktop`
+-   Código Tauri/Rust: `apps\desktop\src-tauri`
+-   Migraciones: `apps\desktop\src-tauri\migrations`
+-   Workflow de build: `.github\workflows\build.yml`
+-   Worker: `worker`
+
+El framework y los archivos exactos del frontend todavía deben
+inspeccionarse desde la fuente verdadera en la próxima sesión. No asumir
+nombres de componentes antes de leer el árbol actual.
+
+------------------------------------------------------------------------
+
+# 5. ARQUITECTURA CONOCIDA
+
+Tecnologías conocidas o indicadas por el repositorio y el pipeline:
+
+-   Tauri
+-   Rust
+-   SQLite
+-   frontend web
+-   GitHub Actions
+-   Cloudflare Worker
+-   Cloudflare D1, para funciones remotas que lo requieran
+-   Keychain del sistema operativo para tokens/secretos
+
+Arquitectura conceptual:
+
+``` text
+             SOCIALFORGE DESKTOP
+                      |
+          +-----------+-----------+
+          |                       |
+      Frontend                Tauri / Rust
+          |                       |
+          +-----------+-----------+
+                      |
+                   SQLite
+                      |
+              Scheduler local
+                      |
+             +--------+---------+
+             |                  |
+          Meta APIs        Cloudflare Worker
+                                |
+                           D1 / servicios
 ```
 
-No modificar código hasta observar el comportamiento real del artefacto.
+Esta es una arquitectura de intención. Antes de modificarla,
+inspeccionar el código actual y distinguir lo ya implementado de lo
+planificado.
 
-## SANDBOX
+------------------------------------------------------------------------
 
-### ESTADO
+# 6. MODELO DE DATOS CONOCIDO
 
-SocialForge superó el milestone de compilación multiplataforma.
+## Tabla `posts`
 
-GitHub Actions completó correctamente los builds de:
+En la DB inspeccionada se observaron estas columnas:
 
-* Windows
-* macOS
-* Ubuntu 22.04
+-   `id`
+-   `workspace_id`
+-   `text`
+-   `platforms`
+-   `media_ids`
+-   `link_url`
+-   `scheduled_for`
+-   `status`
+-   `failure_reason`
+-   `created_at`
+-   `updated_at`
 
-La siguiente fase es la primera validación funcional del artefacto Windows.
+No alterar el esquema sin revisar todas las consultas y comandos que lo
+usan y sin crear una migración nueva.
 
-### ARTEFACTOS WINDOWS
+## Tabla `accounts`
 
-ZIP:
+Después de la migración 005, se verificaron:
 
-`E:\socialforge-windows-latest.zip`
+-   `id`
+-   `workspace_id`
+-   `platform`
+-   `display_name`
+-   `connected_at`
+-   `external_account_id`
+-   `extra_json`
 
-Extracción:
+`external_account_id` identifica la cuenta o página real de la
+plataforma. `extra_json` guarda metadatos adicionales.
 
-`E:\socialforge-test`
+Los tokens de acceso no deben almacenarse en SQLite. El comentario de la
+migración 005 señala que deben vivir en el Keychain del sistema
+operativo.
 
-MSI:
+------------------------------------------------------------------------
 
-`E:\socialforge-test\release\bundle\msi\SocialForge_0.1.0_x64_en-US.msi`
+# 7. INCIDENTE CRÍTICO DE ARRANQUE, RESUELTO
 
-NSIS:
+## Síntoma original
 
-`E:\socialforge-test\release\bundle\nsis\SocialForge_0.1.0_x64-setup.exe`
+El MSI instalaba correctamente, pero `socialforge.exe` mostraba una
+ventana aproximadamente un segundo y se cerraba.
 
-MSI extraído administrativamente:
+Código de salida observado:
 
-`E:\socialforge-msi-extracted`
+`ExitCode = 101`
+
+Las primeras pruebas de consola y backtrace no mostraron una explicación
+visible. No se encontraron informes WER relevantes en las ubicaciones
+consultadas.
+
+## Build comprobada
+
+GitHub Actions:
+
+-   Workflow: `Build Desktop App`
+-   Build #31
+-   Run ID: `36293019345`
+-   Commit: `5ea2556`
+-   Artifact ID: `10922474225`
+
+Artifact descargado:
+
+`E:\socialforge-windows-latest (1).zip`
+
+Tamaño: `7758536` bytes
+
+SHA256 ZIP:
+
+`bed4fbc060f350faa97ba7f67a5db950890379ae009c64ed218d59a3fddc226c`
+
+MSI contenido:
+
+`release\bundle\msi\SocialForge_0.1.0_x64_en-US.msi`
+
+SHA256 MSI #31:
+
+`EC08CCB4C64CC45469DB339DC4570B25763D6C93F360FD5C023F0DF5402CF021`
+
+El MSI anterior que se había probado tenía hash distinto:
+
+`9B60670642A91DA6CB80CE3EE34A53137880C4898DE95406C544DAFB5ADC94E8`
+
+Por lo tanto, aquel instalador anterior no era el artefacto #31.
+
+## DB local que causaba el problema
+
+Ruta:
+
+`C:\Users\alejh\AppData\Roaming\studios.latam.socialforge\socialforge.db`
+
+Estado antes de la reparación:
+
+-   Tamaño: `81920` bytes
+-   `PRAGMA integrity_check`: `ok`
+-   `PRAGMA user_version`: `3`
+-   La tabla `posts` ya tenía `link_url`.
+-   `accounts` todavía no tenía `external_account_id` ni `extra_json`.
+
+Migración 004:
+
+Archivo: `apps\desktop\src-tauri\migrations\004_link_url.sql`
+
+Contenido:
+
+``` sql
+ALTER TABLE posts ADD COLUMN link_url TEXT;
+```
+
+Migración 005:
+
+Archivo: `apps\desktop\src-tauri\migrations\005_account_external_id.sql`
+
+Contenido relevante:
+
+``` sql
+ALTER TABLE accounts ADD COLUMN external_account_id TEXT;
+ALTER TABLE accounts ADD COLUMN extra_json TEXT;
+```
+
+En `main.rs`, el migrador manual usa `PRAGMA user_version`, recorre las
+migraciones y ejecuta las que tienen versión superior a la versión
+registrada. El código observado usa `expect("migración falló")` ante un
+error de `execute_batch`, lo que puede causar un panic.
+
+## Causa demostrada
+
+La base tenía el esquema de la migración 004 aplicada, pero el contador
+`user_version` seguía en 3.
+
+El programa interpretaba que debía volver a ejecutar 004. SQLite
+rechazaba la operación porque `posts.link_url` ya existía. El
+`expect("migración falló")` provocaba el panic y el proceso terminaba
+con código 101.
+
+Cadena:
+
+``` text
+user_version = 3
+        |
+migración 004 considerada pendiente
+        |
+ADD COLUMN link_url
+        |
+link_url ya existe
+        |
+execute_batch falla
+        |
+expect("migración falló")
+        |
+Rust panic / ExitCode 101
+```
+
+## Respaldo creado
+
+Antes de modificar la DB se creó:
+
+`C:\Users\alejh\AppData\Roaming\studios.latam.socialforge\socialforge.db.backup-2026-09-27`
+
+Tamaño verificado: `81920` bytes, igual al archivo original al momento
+de la copia.
+
+No borrar este respaldo sin autorización y sin confirmar que existen
+copias posteriores seguras.
+
+## Reparación controlada realizada
+
+Se comprobó que el proceso `socialforge.exe` estaba cerrado.
+
+Con Python y SQLite se cambió únicamente:
+
+`PRAGMA user_version` de `3` a `4`.
+
+No se alteraron manualmente tablas ni datos.
+
+Después se lanzó el mismo ejecutable instalado. La aplicación permaneció
+abierta. La migración 005 se ejecutó automáticamente.
+
+Verificación posterior:
+
+-   `user_version = 5`
+-   `accounts` contiene `external_account_id` y `extra_json`
+-   `integrity_check = ok`
+
+Esto demuestra que el MSI #31 arranca con la DB reparada y que la
+migración 005 se ejecutó correctamente.
+
+## Conclusión
+
+El problema observado no era que el MSI #31 no pudiera arrancar. Era la
+discrepancia entre el contador de migraciones y el esquema de una DB
+existente.
+
+La instalación actual funciona, pero el código del migrador sigue
+necesitando endurecimiento antes de distribuir futuras versiones.
+
+------------------------------------------------------------------------
+
+# 8. ESTADO ACTUAL DE LA APLICACIÓN INSTALADA
+
+Instalación:
+
+`C:\Program Files\SocialForge\`
 
 Ejecutable:
 
-`E:\socialforge-msi-extracted\PFiles\SocialForge\socialforge.exe`
+`C:\Program Files\SocialForge\socialforge.exe`
 
-### VALIDACIÓN REALIZADA
+Acceso de desinstalación observado:
 
-* ZIP descargado correctamente.
-* ZIP extraído correctamente.
-* MSI localizado correctamente.
-* NSIS localizado correctamente.
-* MSI procesado mediante extracción administrativa.
-* Ejecutable `socialforge.exe` localizado.
-* Metadatos de versión confirmados.
-* Firma digital comprobada como `NotSigned`.
-* No se ha completado todavía la instalación.
-* No se ha realizado todavía el primer arranque.
+`C:\Program Files\SocialForge\Uninstall SocialForge.lnk`
 
-### OBJETIVO INMEDIATO
+La aplicación abre correctamente y muestra:
 
-Completar la instalación de Windows en el entorno de laboratorio,
-preferentemente en `E:` si el instalador permite seleccionar una ruta
-personalizada.
+``` text
+ES   EN
 
-Después:
+# SocialForge
 
-1. Primer arranque.
-2. Diagnóstico de Tauri/React.
-3. Diagnóstico de SQLite.
-4. Diagnóstico de credenciales.
-5. Accounts.
-6. Meta OAuth.
-7. Primer post real.
+Tus redes sociales. Tu máquina. Tus datos.
 
-### REGLA DE TRABAJO
+## Próximas publicaciones
 
-No volver a modificar código hasta que exista evidencia de un problema
-en la ejecución real.
-
-El build ya está verde.
-
-Ahora hay que arrancar el programa.
-
+Todavía no hay publicaciones.
 ```
 
-**Ese bloque completo reemplaza desde la línea 324 hasta el final.** No pegues nada debajo de él.
+Fuera de los controles normales de la ventana, actualmente solo hay
+selector de idioma y contenido de bienvenida. No hay todavía botones o
+navegación funcional para crear publicaciones, gestionar cuentas,
+calendario o configuración.
 
-Y sí, esta vez creo que ya podemos dejar de practicarle cirugía al pobre Brief. 😂
+Por tanto:
 
-Después de pegarlo, commit/push, y **no necesitamos revisar otra vez el documento aquí**. El siguiente chat puede tomar ese archivo como fotografía oficial del proyecto y continuar exactamente desde el instalador. 🏁
+**El arranque está resuelto. La UI funcional y los flujos de producto
+todavía están por construir.**
+
+No cerrar ni modificar la instalación de referencia innecesariamente. Se
+puede usar para pruebas manuales.
+
+------------------------------------------------------------------------
+
+# 9. ICONOS Y MARCA
+
+Los iconos que aparecen en el MSI #31 son un placeholder generado por el
+pipeline.
+
+Ale había creado/proporcionado iconos personalizados en otra
+conversación y desea recuperarlos e incorporarlos. Es posible que los
+iconos finales no estén actualmente aplicados en el repositorio o que
+Claude haya dejado el placeholder.
+
+Pendiente:
+
+-   localizar los archivos originales;
+-   confirmar su formato y transparencia;
+-   eliminar fondos si corresponde;
+-   generar tamaños/formatos adecuados para Tauri y Windows;
+-   actualizar los recursos correctos;
+-   compilar un nuevo artefacto y comprobar visualmente el instalador y
+    la app.
+
+No priorizar los iconos por encima del primer flujo funcional. No
+inventar ni recrear los archivos originales sin que Ale los proporcione
+o identifique.
+
+------------------------------------------------------------------------
+
+# 10. PIPELINE DE BUILD Y DISTRIBUCIÓN
+
+Workflow:
+
+`.github/workflows/build.yml`
+
+Nombre: `Build Desktop App`
+
+Disparadores conocidos:
+
+-   push a `main`
+-   `workflow_dispatch`
+
+Matrix observada:
+
+-   Ubuntu 22.04
+-   Windows latest
+-   macOS latest con target `aarch64-apple-darwin`
+
+Pasos principales:
+
+-   checkout;
+-   Node 20;
+-   Rust stable;
+-   cache de Rust;
+-   instalación de dependencias;
+-   generación de iconos con Tauri;
+-   build mediante `tauri-apps/tauri-action@v0`;
+-   upload de artifacts mediante `actions/upload-artifact@v4`.
+
+Los artifacts se suben desde rutas bajo:
+
+`apps/desktop/src-tauri/target/**/bundle/`
+
+y:
+
+`apps/desktop/src-tauri/target/**/release/bundle/`
+
+La build #31 es la referencia Windows funcional actual, con la salvedad
+de que su DB fue reparada localmente.
+
+Para futuros builds: identificar siempre el run, commit, artifact y hash
+del MSI antes de instalar. No confundir un MSI antiguo con el artefacto
+recién generado.
+
+------------------------------------------------------------------------
+
+# 11. HISTORIAL TÉCNICO RELEVANTE
+
+Últimos commits conocidos:
+
+``` text
+5ea2556  actualizacion
+f8b7cb7  actualizacion
+55f1356  actualizacion
+02b655a  Fix database connection lifetime
+d716b78  actualizacion
+17fc95a  actualizacion
+54d8d7c  Update main.rs with keychain commands
+26d63de  Revise SOCIALFORGE_MASTER_BRIEF with recent changes
+89b9af6  Add missing migration 004_link_url
+bef5a00  Add SocialForge master brief
 ```
+
+### `89b9af6`
+
+Añadió el archivo `004_link_url.sql` con
+`ALTER TABLE posts ADD COLUMN link_url TEXT;`.
+
+### `02b655a`
+
+Corrigió un lifetime en `get_conn`, cambiando la firma para explicitar
+la vida útil de `State` y el `MutexGuard`. Es una corrección de
+Rust/lifetime y no debe confundirse con el bug de migraciones.
+
+### `54d8d7c`
+
+Actualizó `main.rs` con comandos relacionados con Keychain.
+
+### `5ea2556` y `f8b7cb7`
+
+Cambios al Master Brief. No fueron cambios de código de la aplicación,
+según los `git show --stat` revisados.
+
+------------------------------------------------------------------------
+
+# 12. PLAN DE PRODUCTO: AHORA SÍ, LO QUE FALTA
+
+El objetivo es pasar de una app que abre a un producto que completa un
+flujo útil de principio a fin.
+
+No implementar todas las fases en una sola tarea.
+
+## Fase 0: inspección y mapa real del frontend
+
+**Siguiente tarea inmediata.**
+
+Desde el repositorio verdadero:
+
+1.  Comprobar `git status --short --branch` y HEAD.
+2.  Inspeccionar `apps\desktop` y `apps\desktop\src-tauri`.
+3.  Identificar framework frontend, punto de entrada, componente raíz,
+    estilos y sistema de idioma.
+4.  Identificar comandos Tauri ya registrados y cómo se invocan desde el
+    frontend.
+5.  Identificar comandos CRUD existentes para posts, workspaces, cuentas
+    y settings.
+6.  Revisar `package.json`, configuración Tauri y archivos relevantes.
+7.  Registrar qué existe realmente y qué es solo placeholder.
+
+No modificar archivos durante esta fase. La salida debe ser un mapa de
+arquitectura real, con rutas y responsabilidades.
+
+## Fase 1: robustecer migraciones
+
+Antes de distribuir una nueva versión:
+
+-   inspeccionar todo el sistema actual;
+-   diseñar manejo seguro de errores;
+-   evitar que un fallo de migración termine en panic sin información;
+-   considerar transacciones y migraciones atómicas;
+-   detectar estados de esquema que ya tengan una columna aunque el
+    contador esté atrasado;
+-   definir estrategia segura para instalaciones nuevas y
+    actualizaciones;
+-   agregar pruebas de migración;
+-   probar DB limpia y DB heredada;
+-   no hacer que `IF NOT EXISTS` o una tolerancia genérica oculte
+    incompatibilidades sin validar el esquema.
+
+La corrección debe diseñarse con conocimiento del código completo y de
+las migraciones 001--005. No realizar un parche aislado sin revisar el
+flujo entero.
+
+## Fase 2: dashboard funcional
+
+Convertir la pantalla placeholder en un dashboard coherente con:
+
+-   botón/acción Nueva publicación;
+-   lista de próximas publicaciones;
+-   publicaciones recientes;
+-   cuentas conectadas o estado vacío;
+-   acceso a configuración.
+
+La UI debe mantener coherencia con la marca y permitir ES/EN. El diseño
+visual debe ser limpio y funcional, sin sobrecargar el primer
+incremento.
+
+## Fase 3: composer
+
+Flujo previsto:
+
+``` text
+Nueva publicación
+       |
+       +-- texto
+       +-- medios (posteriormente)
+       +-- enlace
+       +-- selección de plataformas
+       |
+       +-- guardar borrador
+       +-- programar
+       +-- publicar ahora (cuando integración esté lista)
+```
+
+Primero construir el flujo local y persistente. No simular publicación
+remota como si fuera real.
+
+## Fase 4: CRUD y persistencia local
+
+Probar:
+
+-   crear borrador/publicación;
+-   guardar;
+-   listar;
+-   editar;
+-   eliminar con confirmación;
+-   recuperar después de cerrar y reabrir;
+-   validar campos;
+-   manejar errores visibles.
+
+Prueba de aceptación mínima:
+
+``` text
+crear publicación
+→ guardar
+→ aparece en lista
+→ cerrar app
+→ abrir app
+→ publicación sigue presente
+```
+
+La UI debe conectarse a los comandos Tauri/Rust existentes o implementar
+comandos nuevos solo si hacen falta y están diseñados.
+
+## Fase 5: scheduler local
+
+Implementar/verificar:
+
+-   fecha y hora;
+-   zona horaria;
+-   cola local;
+-   estados y transiciones;
+-   ejecución a la hora programada;
+-   reintentos;
+-   errores visibles;
+-   comportamiento con suspensión/cierre/reinicio del equipo;
+-   prevención de publicaciones duplicadas.
+
+Documentar límites del scheduler local, especialmente si la app está
+cerrada o el equipo suspendido.
+
+## Fase 6: cuentas y credenciales
+
+-   conexión de cuenta;
+-   selección de plataforma;
+-   OAuth;
+-   selección de Facebook Page;
+-   asociación de Instagram profesional cuando corresponda;
+-   persistencia de IDs externos y metadatos;
+-   almacenamiento seguro de tokens;
+-   desconexión/revocación y errores de autorización.
+
+## Fase 7: integración Meta
+
+Primera integración prevista:
+
+-   Facebook Pages;
+-   Instagram.
+
+Verificar permisos, requisitos de cuenta, flujo OAuth, endpoints
+vigentes, formatos y restricciones de publicación antes de implementar.
+No asumir que cualquier perfil personal puede publicar mediante API.
+
+## Fase 8: medios
+
+-   selección/importación local de imágenes y videos;
+-   almacenamiento y referencias locales;
+-   thumbnails;
+-   validación de formatos/tamaños;
+-   asociación a publicaciones;
+-   carga/transmisión a plataformas al publicar.
+
+## Fase 9: Cloudflare y monetización
+
+-   Worker;
+-   D1 donde sea necesario;
+-   licencias;
+-   entitlements;
+-   callbacks OAuth;
+-   webhooks;
+-   planes/precios.
+
+No trasladar el scheduler local a la nube por conveniencia accidental.
+
+## Fase 10: distribución y QA
+
+Casos obligatorios:
+
+1.  instalación limpia;
+2.  primer arranque con DB nueva;
+3.  migraciones 001--005;
+4.  actualización desde DB existente;
+5.  actualización con esquema y `user_version` desalineados;
+6.  persistencia;
+7.  desinstalación y reinstalación;
+8.  manejo de errores;
+9.  verificación de versión/hash del MSI;
+10. verificación de iconos y recursos.
+
+------------------------------------------------------------------------
+
+# 13. PROTOCOLO PARA CADA TAREA DE IMPLEMENTACIÓN
+
+Cada tarea se hará en un ciclo controlado:
+
+1.  **Inspección:** confirmar estado Git y leer archivos actuales.
+2.  **Especificación:** objetivo, alcance, archivos, restricciones y
+    criterios.
+3.  **Implementación:** Claude modifica solo lo autorizado.
+4.  **Revisión:** inspeccionar resumen y diff; buscar cambios
+    inesperados.
+5.  **Pruebas:** ejecutar pruebas y build pertinentes.
+6.  **Git:** revisar `git diff`, `git status`, y commits.
+7.  **Build:** esperar a que GitHub Actions construya el commit
+    correcto.
+8.  **Artefacto:** verificar run, commit, nombre y hash.
+9.  **Prueba real:** instalar/probar cuando corresponda.
+10. **Registro:** actualizar el brief con el resultado real.
+
+No avanzar a la siguiente fase si falla un criterio de aceptación
+esencial.
+
+------------------------------------------------------------------------
+
+# 14. PROTOCOLO DE SEGURIDAD Y DIAGNÓSTICO
+
+Regla general:
+
+**Observar → respaldar → formular hipótesis → probar sin modificar →
+hacer cambio mínimo → verificar.**
+
+No borrar AppData ni la DB para resolver un problema por reflejo.
+
+No modificar bases de datos sin:
+
+-   comprobar que la aplicación está cerrada;
+-   crear respaldo verificable;
+-   conocer exactamente la operación;
+-   comprobar resultado inmediatamente.
+
+No reinstalar repetidamente sin identificar qué artefacto se está
+instalando.
+
+No tratar como fuente de verdad una carpeta extraída, un MSI o un
+directorio de build.
+
+No afirmar que algo funciona porque compila solamente. Distinguir
+compilación, instalación, arranque y prueba funcional.
+
+------------------------------------------------------------------------
+
+# 15. ESTADO ACTUAL RESUMIDO
+
+## Confirmado funcionando
+
+-   Repositorio verdadero y remoto identificados.
+-   Build #31 identificada.
+-   MSI #31 instalado en Windows.
+-   Aplicación Tauri abre y permanece abierta después de corregir el
+    estado de la DB.
+-   SQLite está íntegra.
+-   Migración 005 se ejecutó.
+-   DB local reporta `user_version = 5`.
+-   La UI placeholder aparece correctamente.
+-   El selector ES/EN está visible.
+
+## Todavía no construido o no verificado
+
+-   Dashboard funcional.
+-   Composer.
+-   CRUD de publicaciones desde UI.
+-   Persistencia desde UI.
+-   Scheduler completo.
+-   Conexión de cuentas.
+-   OAuth/Meta funcional.
+-   Publicación real.
+-   Gestión de medios.
+-   Licencias y monetización.
+-   Migraciones robustas y pruebas automatizadas.
+-   Iconos finales.
+-   Pruebas de instalación limpia y actualización.
+
+------------------------------------------------------------------------
+
+# 16. PRÓXIMA ACCIÓN EXACTA
+
+Al retomar, no pedirle a Claude que empiece a construir pantallas
+todavía.
+
+Primero, desde PowerShell en el repo verdadero:
+
+``` powershell
+cd "C:\Users\alejh\OneDrive\Docs-ForLatam\socialforge"
+git status --short --branch
+git log -1 --oneline
+```
+
+Después inspeccionar, sin editar:
+
+-   `apps\desktop\package.json` (si existe);
+-   `apps\desktop\src`;
+-   `apps\desktop\src-tauri\src\main.rs`;
+-   `apps\desktop\src-tauri\tauri.conf.json`;
+-   comandos Tauri y llamadas `invoke`;
+-   sistema actual de idioma;
+-   CSS/estilos.
+
+La dirección del proyecto debe convertir esa inspección en una primera
+tarea acotada para Claude.
+
+**Primer objetivo de producto recomendado:** Dashboard → Nueva
+publicación → guardar localmente → reaparecer tras reiniciar.
+
+------------------------------------------------------------------------
+
+# 17. DECLARACIÓN FINAL DE CONTINUIDAD
+
+SocialForge no está terminado, pero ya superó el primer umbral técnico:
+la aplicación Windows arranca con la base de datos existente y las
+migraciones llegan a versión 5.
+
+El siguiente capítulo no es seguir reinstalando ni investigar el
+arranque sin motivo. Es construir la experiencia de usuario, con pasos
+pequeños y pruebas reales.
+
+**SocialForge ya arranca. Ahora vamos a construir lo que falta.**
