@@ -22,6 +22,7 @@ export default function App() {
   const [text, setText] = useState<string>('');
   const [linkUrl, setLinkUrl] = useState<string>('');
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(['facebook', 'instagram']);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [creating, setCreating] = useState<boolean>(false);
 
   const loadPosts = async (): Promise<void> => {
@@ -40,12 +41,25 @@ export default function App() {
     loadPosts();
   }, []);
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const filesArray = Array.from(e.target.files);
+      setSelectedFiles((prev) => [...prev, ...filesArray]);
+    }
+  };
+
+  const removeFile = (index: number) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const handleCreatePost = async (e: React.FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault();
     if (!text.trim()) return;
 
     try {
       setCreating(true);
+
+      // Por ahora pasamos un arreglo vacío de mediaIds hasta conectar la copia física en Rust
       await invoke('create_post', {
         input: {
           workspaceId: 'default',
@@ -59,6 +73,7 @@ export default function App() {
 
       setText('');
       setLinkUrl('');
+      setSelectedFiles([]);
       setShowModal(false);
       await loadPosts();
     } catch (err) {
@@ -189,7 +204,7 @@ export default function App() {
               borderRadius: '8px',
               padding: '1.5rem',
               width: '100%',
-              maxWidth: '500px',
+              maxWidth: '520px',
               boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
             }}
           >
@@ -207,6 +222,46 @@ export default function App() {
                   style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', boxSizing: 'border-box' }}
                   required
                 />
+              </div>
+
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.3rem' }}>
+                  Archivos Multimedia (Imágenes / Videos)
+                </label>
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*,video/*"
+                  onChange={handleFileChange}
+                  style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem' }}
+                />
+                {selectedFiles.length > 0 && (
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
+                    {selectedFiles.map((file, idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          fontSize: '0.75rem',
+                          backgroundColor: '#f1f5f9',
+                          padding: '0.3rem 0.6rem',
+                          borderRadius: '4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.4rem',
+                        }}
+                      >
+                        <span>📎 {file.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeFile(idx)}
+                          style={{ border: 'none', background: 'none', color: '#e53e3e', cursor: 'pointer', fontWeight: 'bold' }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div style={{ marginBottom: '1rem' }}>
