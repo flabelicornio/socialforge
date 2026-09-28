@@ -1,269 +1,284 @@
-import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { LocaleProvider, useLocale } from "@socialforge/core";
+import { useEffect, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 
-// Tipo compatible con el Struct Post de Rust
 interface Post {
-  id: String;
+  id: string;
   workspaceId: string;
   text: string;
   platforms: string;
   mediaIds: string;
-  scheduledFor: number | null;
+  scheduledFor?: number;
   status: string;
-  failureReason: string | null;
-  linkUrl: string | null;
+  failureReason?: string;
+  linkUrl?: string;
   createdAt: number;
   updatedAt: number;
 }
 
-export default function App() {
-  return (
-    <LocaleProvider>
-      <Dashboard />
-    </LocaleProvider>
-  );
-}
-
-function Dashboard() {
-  const { locale, setLocale, t } = useLocale();
+export function App() {
   const [posts, setPosts] = useState<Post[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [text, setText] = useState('');
+  const [linkUrl, setLinkUrl] = useState('');
+  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(['facebook', 'instagram']);
+  const [creating, setCreating] = useState(false);
 
-  // Estado del formulario (Composer)
-  const [showComposer, setShowComposer] = useState<boolean>(false);
-  const [text, setText] = useState<string>("");
-  const [linkUrl, setLinkUrl] = useState<string>("");
-  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-
-  const workspaceId = "default";
-
-  // Cargar publicaciones desde SQLite
-  const fetchPosts = async () => {
+  // Cargar publicaciones de la DB
+  const loadPosts = async () => {
     try {
       setLoading(true);
-      setError(null);
-      const res = await invoke<Post[]>("list_posts", { workspaceId });
+      const res = await invoke<Post[]>('list_posts', { workspaceId: 'default' });
       setPosts(res);
-    } catch (err: any) {
-      console.error("Error al cargar publicaciones:", err);
-      setError(String(err));
+    } catch (err) {
+      console.error('Error al listar posts:', err);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchPosts();
+    loadPosts();
   }, []);
 
-  // Crear nueva publicación
+  // Crear publicación
   const handleCreatePost = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!text.trim()) return;
 
     try {
-      setIsSubmitting(true);
-      await invoke("create_post", {
+      setCreating(true);
+      await invoke('create_post', {
         input: {
-          workspaceId,
-          text: text.trim(),
-          platforms: ["facebook", "instagram"], // plataformas default
+          workspaceId: 'default',
+          text,
+          platforms: selectedPlatforms,
           mediaIds: [],
           scheduledFor: null,
-          linkUrl: linkUrl.trim() || null,
+          linkUrl: linkUrl.trim() ? linkUrl.trim() : null,
         },
       });
 
-      // Limpiar y actualizar
-      setText("");
-      setLinkUrl("");
-      setShowComposer(false);
-      await fetchPosts();
-    } catch (err: any) {
-      console.error("Error al crear publicación:", err);
-      alert("Error al guardar la publicación: " + String(err));
+      setText('');
+      setLinkUrl('');
+      setShowModal(false);
+      await loadPosts();
+    } catch (err) {
+      alert(`Error al guardar la publicación: ${err}`);
     } finally {
-      setIsSubmitting(false);
+      setCreating(false);
     }
   };
 
   // Eliminar publicación
-  const handleDeletePost = async (id: String) => {
-    if (!confirm("¿Seguro que deseas eliminar esta publicación?")) return;
+  const handleDeletePost = async (id: string) => {
+    if (!confirm('¿Seguro que deseas eliminar esta publicación?')) return;
     try {
-      await invoke("delete_post", { id });
-      await fetchPosts();
-    } catch (err: any) {
-      console.error("Error al eliminar publicación:", err);
-      alert("Error al eliminar: " + String(err));
+      await invoke('delete_post', { id });
+      await loadPosts();
+    } catch (err) {
+      alert(`Error al eliminar: ${err}`);
+    }
+  };
+
+  const togglePlatform = (p: string) => {
+    if (selectedPlatforms.includes(p)) {
+      setSelectedPlatforms(selectedPlatforms.filter((item) => item !== p));
+    } else {
+      setSelectedPlatforms([...selectedPlatforms, p]);
     }
   };
 
   return (
-    <div style={{ fontFamily: "system-ui, -apple-system, sans-serif", padding: "2rem", maxWidth: "800px", margin: "0 auto" }}>
-      {/* Selector de Idioma */}
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: "1rem" }}>
-        <button onClick={() => setLocale("es")} style={{ fontWeight: locale === "es" ? 700 : 400, cursor: "pointer" }}>
-          ES
-        </button>
-        <button onClick={() => setLocale("en")} style={{ fontWeight: locale === "en" ? 700 : 400, cursor: "pointer" }}>
-          EN
-        </button>
-      </div>
-
-      {/* Encabezado */}
-      <header style={{ marginBottom: "2rem" }}>
-        <h1 style={{ margin: "0 0 0.5rem 0" }}>SocialForge</h1>
-        <p style={{ color: "#666", margin: 0 }}>{t("app.tagline")}</p>
+    <div style={{ maxWidth: '800px', margin: '0 auto', padding: '2rem', fontFamily: 'system-ui, sans-serif' }}>
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: '1.8rem', fontWeight: 'bold' }}>SocialForge</h1>
+          <p style={{ margin: '0.25rem 0 0', color: '#666', fontSize: '0.9rem' }}>
+            Your social media. Your machine. Your data.
+          </p>
+        </div>
       </header>
 
-      {/* Acciones Principales */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
-        <h2 style={{ margin: 0 }}>{t("dashboard.upcoming")}</h2>
-        <button
-          onClick={() => setShowComposer(!showComposer)}
-          style={{
-            backgroundColor: "#0066cc",
-            color: "#fff",
-            border: "none",
-            padding: "0.6rem 1.2rem",
-            borderRadius: "6px",
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
-        >
-          {showComposer ? "Cancelar" : "+ Nueva Publicación"}
-        </button>
-      </div>
-
-      {/* Formulario Composer */}
-      {showComposer && (
-        <form
-          onSubmit={handleCreatePost}
-          style={{
-            background: "#f5f5f7",
-            padding: "1.2rem",
-            borderRadius: "8px",
-            marginBottom: "2rem",
-            border: "1px solid #e0e0e0",
-          }}
-        >
-          <h3 style={{ marginTop: 0, marginBottom: "1rem" }}>Crear borrador local</h3>
-          
-          <div style={{ marginBottom: "1rem" }}>
-            <label style={{ display: "block", marginBottom: "0.4rem", fontWeight: 500 }}>
-              Contenido del post:
-            </label>
-            <textarea
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              placeholder="¿Qué quieres compartir hoy?"
-              rows={4}
-              style={{
-                width: "100%",
-                padding: "0.6rem",
-                borderRadius: "6px",
-                border: "1px solid #ccc",
-                boxSizing: "border-box",
-                fontFamily: "inherit",
-              }}
-              required
-            />
-          </div>
-
-          <div style={{ marginBottom: "1.2rem" }}>
-            <label style={{ display: "block", marginBottom: "0.4rem", fontWeight: 500 }}>
-              Enlace / URL (opcional):
-            </label>
-            <input
-              type="url"
-              value={linkUrl}
-              onChange={(e) => setLinkUrl(e.target.value)}
-              placeholder="https://ejemplo.com"
-              style={{
-                width: "100%",
-                padding: "0.6rem",
-                borderRadius: "6px",
-                border: "1px solid #ccc",
-                boxSizing: "border-box",
-              }}
-            />
-          </div>
-
+      <section>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+          <h2 style={{ margin: 0, fontSize: '1.4rem' }}>Upcoming posts</h2>
           <button
-            type="submit"
-            disabled={isSubmitting}
+            onClick={() => setShowModal(true)}
             style={{
-              backgroundColor: "#28a745",
-              color: "#fff",
-              border: "none",
-              padding: "0.6rem 1.2rem",
-              borderRadius: "6px",
-              fontWeight: 600,
-              cursor: "pointer",
+              backgroundColor: '#0066cc',
+              color: 'white',
+              border: 'none',
+              padding: '0.6rem 1.2rem',
+              borderRadius: '6px',
+              fontWeight: 'bold',
+              cursor: 'pointer',
             }}
           >
-            {isSubmitting ? "Guardando..." : "Guardar en Local"}
+            + Nueva Publicación
           </button>
-        </form>
-      )}
+        </div>
 
-      {/* Feedback de Estado */}
-      {loading && <p>Cargando publicaciones...</p>}
-      {error && <p style={{ color: "red" }}>Error al conectar con la base de datos: {error}</p>}
+        {loading ? (
+          <p style={{ color: '#888' }}>Cargando publicaciones...</p>
+        ) : posts.length === 0 ? (
+          <div style={{ border: '1px dashed #ccc', padding: '2rem', textAlign: 'center', borderRadius: '8px', color: '#666' }}>
+            No hay publicaciones programadas. ¡Crea la primera!
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {posts.map((post) => (
+              <div
+                key={post.id}
+                style={{
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '8px',
+                  padding: '1.25rem',
+                  backgroundColor: '#fff',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ margin: '0 0 0.5rem 0', fontSize: '1rem', whiteSpace: 'pre-wrap' }}>{post.text}</p>
+                    {post.linkUrl && (
+                      <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.85rem', color: '#0066cc' }}>
+                        🔗 <a href={post.linkUrl} target="_blank" rel="noreferrer" style={{ color: '#0066cc' }}>{post.linkUrl}</a>
+                      </p>
+                    )}
+                    <span style={{ fontSize: '0.75rem', color: '#888' }}>
+                      Estado: <strong>{post.status}</strong> • Creado: {new Date(post.createdAt).toLocaleString()}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => handleDeletePost(post.id)}
+                    style={{
+                      backgroundColor: '#fff',
+                      color: '#e53e3e',
+                      border: '1px solid #e53e3e',
+                      padding: '0.3rem 0.8rem',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '0.85rem',
+                    }}
+                  >
+                    Eliminar
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
-      {/* Lista de Publicaciones */}
-      {!loading && !error && posts.length === 0 && (
-        <p style={{ color: "#777", italic: "true" }}>{t("dashboard.empty")}</p>
-      )}
+      {/* Modal Nueva Publicación */}
+      {showModal && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 1000,
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: 'white',
+              borderRadius: '8px',
+              padding: '1.5rem',
+              width: '100%',
+              maxWidth: '500px',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            }}
+          >
+            <h3 style={{ marginTop: 0 }}>Nueva Publicación</h3>
+            <form onSubmit={handleCreatePost}>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.3rem' }}>
+                  Texto de la publicación
+                </label>
+                <textarea
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  placeholder="¿Qué quieres compartir?"
+                  rows={4}
+                  style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', boxSizing: 'border-box' }}
+                  required
+                />
+              </div>
 
-      {!loading && posts.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-          {posts.map((p) => (
-            <div
-              key={String(p.id)}
-              style={{
-                padding: "1rem",
-                border: "1px solid #ddd",
-                borderRadius: "8px",
-                background: "#fff",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-start",
-              }}
-            >
-              <div>
-                <p style={{ margin: "0 0 0.5rem 0", fontSize: "1.05rem" }}>{p.text}</p>
-                {p.linkUrl && (
-                  <p style={{ margin: "0 0 0.5rem 0", fontSize: "0.85rem", color: "#0066cc" }}>
-                    🔗 <a href={p.linkUrl} target="_blank" rel="noreferrer">{p.linkUrl}</a>
-                  </p>
-                )}
-                <div style={{ display: "flex", gap: "0.5rem", fontSize: "0.75rem", color: "#888" }}>
-                  <span>Estado: {p.status}</span>
-                  <span>•</span>
-                  <span>Creado: {new Date(p.createdAt).toLocaleString()}</span>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.3rem' }}>
+                  Enlace opcional (URL)
+                </label>
+                <input
+                  type="url"
+                  value={linkUrl}
+                  onChange={(e) => setLinkUrl(e.target.value)}
+                  placeholder="https://ejemplo.com"
+                  style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.3rem' }}>
+                  Plataformas objetivo
+                </label>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  {['facebook', 'instagram', 'x', 'linkedin'].map((p) => (
+                    <button
+                      type="button"
+                      key={p}
+                      onClick={() => togglePlatform(p)}
+                      style={{
+                        padding: '0.4rem 0.8rem',
+                        borderRadius: '4px',
+                        border: '1px solid #ccc',
+                        backgroundColor: selectedPlatforms.includes(p) ? '#0066cc' : '#f0f0f0',
+                        color: selectedPlatforms.includes(p) ? 'white' : '#333',
+                        cursor: 'pointer',
+                        fontSize: '0.8rem',
+                        textTransform: 'capitalize',
+                      }}
+                    >
+                      {p}
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              <button
-                onClick={() => handleDeletePost(p.id)}
-                style={{
-                  background: "transparent",
-                  color: "#dc3545",
-                  border: "1px solid #dc3545",
-                  padding: "0.3rem 0.6rem",
-                  borderRadius: "4px",
-                  cursor: "pointer",
-                  fontSize: "0.8rem",
-                }}
-              >
-                Eliminar
-              </button>
-            </div>
-          ))}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  style={{ padding: '0.5rem 1rem', borderRadius: '4px', border: '1px solid #ccc', backgroundColor: '#fff', cursor: 'pointer' }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={creating}
+                  style={{
+                    padding: '0.5rem 1rem',
+                    borderRadius: '4px',
+                    border: 'none',
+                    backgroundColor: '#0066cc',
+                    color: 'white',
+                    cursor: 'pointer',
+                    fontWeight: 'bold',
+                  }}
+                >
+                  {creating ? 'Guardando...' : 'Guardar en Local'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>
