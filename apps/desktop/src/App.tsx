@@ -24,7 +24,6 @@ export function App() {
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(['facebook', 'instagram']);
   const [creating, setCreating] = useState(false);
 
-  // Cargar publicaciones de la DB
   const loadPosts = async () => {
     try {
       setLoading(true);
@@ -41,7 +40,6 @@ export function App() {
     loadPosts();
   }, []);
 
-  // Crear publicación
   const handleCreatePost = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!text.trim()) return;
@@ -70,7 +68,6 @@ export function App() {
     }
   };
 
-  // Eliminar publicación
   const handleDeletePost = async (id: string) => {
     if (!confirm('¿Seguro que deseas eliminar esta publicación?')) return;
     try {
@@ -171,7 +168,6 @@ export function App() {
         )}
       </section>
 
-      {/* Modal Nueva Publicación */}
       {showModal && (
         <div
           style={{
