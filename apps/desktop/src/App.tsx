@@ -52,6 +52,11 @@ export default function App() {
     setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const fileToByteArray = async (file: File): Promise<number[]> => {
+    const arrayBuffer = await file.arrayBuffer();
+    return Array.from(new Uint8Array(arrayBuffer));
+  };
+
   const handleCreatePost = async (e: React.FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault();
     if (!text.trim()) return;
@@ -59,13 +64,22 @@ export default function App() {
     try {
       setCreating(true);
 
-      // Por ahora pasamos un arreglo vacío de mediaIds hasta conectar la copia física en Rust
+      const mediaIds: string[] = [];
+      for (const file of selectedFiles) {
+        const bytes = await fileToByteArray(file);
+        const mediaId = await invoke<String>('save_media_file', {
+          fileName: file.name,
+          fileBytes: bytes,
+        });
+        mediaIds.push(mediaId.toString());
+      }
+
       await invoke('create_post', {
         input: {
           workspaceId: 'default',
           text: text,
           platforms: selectedPlatforms,
-          mediaIds: [],
+          mediaIds: mediaIds,
           scheduledFor: null,
           linkUrl: linkUrl.trim() ? linkUrl.trim() : null,
         },
@@ -98,6 +112,14 @@ export default function App() {
       setSelectedPlatforms(selectedPlatforms.filter((p) => p !== platform));
     } else {
       setSelectedPlatforms([...selectedPlatforms, platform]);
+    }
+  };
+
+  const parseJsonArray = (jsonString: string): string[] => {
+    try {
+      return JSON.parse(jsonString) || [];
+    } catch {
+      return [];
     }
   };
 
@@ -139,46 +161,78 @@ export default function App() {
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {posts.map((post) => (
-              <div
-                key={post.id}
-                style={{
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '8px',
-                  padding: '1.25rem',
-                  backgroundColor: '#fff',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ margin: '0 0 0.5rem 0', fontSize: '1rem', whiteSpace: 'pre-wrap' }}>{post.text}</p>
-                    {post.linkUrl && (
-                      <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.85rem', color: '#0066cc' }}>
-                        🔗 <a href={post.linkUrl} target="_blank" rel="noreferrer" style={{ color: '#0066cc' }}>{post.linkUrl}</a>
-                      </p>
-                    )}
-                    <span style={{ fontSize: '0.75rem', color: '#888' }}>
-                      Estado: <strong>{post.status}</strong> • Creado: {new Date(post.createdAt).toLocaleString()}
-                    </span>
+            {posts.map((post) => {
+              const mediaList = parseJsonArray(post.mediaIds);
+              const platformList = parseJsonArray(post.platforms);
+
+              return (
+                <div
+                  key={post.id}
+                  style={{
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px',
+                    padding: '1.25rem',
+                    backgroundColor: '#fff',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ margin: '0 0 0.5rem 0', fontSize: '1rem', whiteSpace: 'pre-wrap' }}>{post.text}</p>
+                      
+                      {post.linkUrl && (
+                        <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.85rem', color: '#0066cc' }}>
+                          🔗 <a href={post.linkUrl} target="_blank" rel="noreferrer" style={{ color: '#0066cc' }}>{post.linkUrl}</a>
+                        </p>
+                      )}
+
+                      {mediaList.length > 0 && (
+                        <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.85rem', color: '#4a5568' }}>
+                          📁 <strong>Archivos adjuntos:</strong> {mediaList.length} archivo(s)
+                        </p>
+                      )}
+
+                      <div style={{ display: 'flex', gap: '0.4rem', margin: '0.5rem 0' }}>
+                        {platformList.map((plat) => (
+                          <span
+                            key={plat}
+                            style={{
+                              fontSize: '0.7rem',
+                              backgroundColor: '#edf2f7',
+                              padding: '0.2rem 0.5rem',
+                              borderRadius: '4px',
+                              textTransform: 'uppercase',
+                              fontWeight: 'bold',
+                              color: '#4a5568',
+                            }}
+                          >
+                            {plat}
+                          </span>
+                        ))}
+                      </div>
+
+                      <span style={{ fontSize: '0.75rem', color: '#888' }}>
+                        Estado: <strong>{post.status}</strong> • Creado: {new Date(post.createdAt).toLocaleString()}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => handleDeletePost(post.id)}
+                      style={{
+                        backgroundColor: '#fff',
+                        color: '#e53e3e',
+                        border: '1px solid #e53e3e',
+                        padding: '0.3rem 0.8rem',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '0.85rem',
+                      }}
+                    >
+                      Eliminar
+                    </button>
                   </div>
-                  <button
-                    onClick={() => handleDeletePost(post.id)}
-                    style={{
-                      backgroundColor: '#fff',
-                      color: '#e53e3e',
-                      border: '1px solid #e53e3e',
-                      padding: '0.3rem 0.8rem',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      fontSize: '0.85rem',
-                    }}
-                  >
-                    Eliminar
-                  </button>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>
