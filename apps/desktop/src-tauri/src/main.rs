@@ -19,6 +19,17 @@ pub struct CreatePostInput {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct UpdatePostInput {
+    pub id: String,
+    pub text: String,
+    pub platforms: Vec<String>,
+    pub media_ids: Vec<String>,
+    pub scheduled_for: Option<i64>,
+    pub link_url: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Post {
     pub id: String,
     pub workspace_id: String,
@@ -112,6 +123,35 @@ fn create_post(app: AppHandle, input: CreatePostInput) -> Result<String, String>
 }
 
 #[tauri::command]
+fn update_post(app: AppHandle, input: UpdatePostInput) -> Result<(), String> {
+    let db_path = get_db_path(&app);
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
+
+    let platforms_json = serde_json::to_string(&input.platforms).unwrap_or_default();
+    let media_ids_json = serde_json::to_string(&input.media_ids).unwrap_or_default();
+
+    conn.execute(
+        "UPDATE posts SET text = ?1, platforms = ?2, media_ids = ?3, scheduled_for = ?4, link_url = ?5, updated_at = ?6 WHERE id = ?7",
+        params![
+            input.text,
+            platforms_json,
+            media_ids_json,
+            input.scheduled_for,
+            input.link_url,
+            now,
+            input.id
+        ],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
 fn list_posts(app: AppHandle, workspace_id: String) -> Result<Vec<Post>, String> {
     let db_path = get_db_path(&app);
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
@@ -172,7 +212,7 @@ fn main() {
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![create_post, list_posts, delete_post, save_media_file])
+        .invoke_handler(tauri::generate_handler![create_post, update_post, list_posts, delete_post, save_media_file])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
