@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { convertFileSrc } from '@tauri-apps/api/core';
 
 interface Post {
   id: string;
@@ -37,6 +38,7 @@ export default function App() {
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
   const [existingMediaIds, setExistingMediaIds] = useState<string[]>([]);
   const [saving, setSaving] = useState<boolean>(false);
+  const [mediaDir, setMediaDir] = useState<string>('');
   
   // Vista Previa Modal
   const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor');
@@ -47,6 +49,10 @@ export default function App() {
       setLoading(true);
       const res = await invoke<Post[]>('list_posts', { workspaceId: 'default' });
       setPosts(res);
+      
+      // Obtener el directorio de medios
+      const dir = await invoke<string>('get_media_dir');
+      setMediaDir(dir);
     } catch (err) {
       console.error('Error al listar posts:', err);
     } finally {
@@ -89,13 +95,21 @@ export default function App() {
     setExistingMediaIds(savedMedia);
     setSelectedFiles([]);
 
-    // Representación de items existentes
-    const existingItems: MediaItem[] = savedMedia.map((id) => ({
-      url: '', // placeholder para guardados
-      type: id.match(/\.(mp4|mov|webm)$/i) ? 'video' : 'image',
-      name: id.split('_').slice(1).join('_') || id,
-      isExisting: true,
-    }));
+    // Convertir IDs existentes a URLs locales reproducibles
+    const existingItems: MediaItem[] = savedMedia.map((id) => {
+      const isVid = id.match(/\.(mp4|mov|webm)$/i) !== null;
+      let fullUrl = '';
+      if (mediaDir) {
+        const filePath = `${mediaDir}\\${id}`;
+        fullUrl = convertFileSrc(filePath);
+      }
+      return {
+        url: fullUrl,
+        type: isVid ? 'video' : 'image',
+        name: id.split('_').slice(1).join('_') || id,
+        isExisting: true,
+      };
+    });
 
     setMediaItems(existingItems);
     setCurrentMediaIndex(0);
@@ -124,7 +138,7 @@ export default function App() {
     setMediaItems((prev) => prev.filter((_, i) => i !== index));
 
     if (itemToRemove.isExisting) {
-      setExistingMediaIds((prev) => prev.filter((name) => !name.includes(itemToRemove.name)));
+      setExistingMediaIds((prev) => prev.filter((id) => !id.includes(itemToRemove.name)));
     } else {
       setSelectedFiles((prev) => prev.filter((f) => f.name !== itemToRemove.name));
     }
@@ -149,11 +163,11 @@ export default function App() {
       const newMediaIds: string[] = [];
       for (const file of selectedFiles) {
         const bytes = await fileToByteArray(file);
-        const mediaId = await invoke<String>('save_media_file', {
+        const mediaId = await invoke<string>('save_media_file', {
           fileName: file.name,
           fileBytes: bytes,
         });
-        newMediaIds.push(mediaId.toString());
+        newMediaIds.push(mediaId);
       }
 
       const totalMediaIds = [...existingMediaIds, ...newMediaIds];
@@ -533,7 +547,7 @@ export default function App() {
               <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '1.25rem', backgroundColor: '#fafafa' }}>
                 <p style={{ fontSize: '0.95rem', margin: '0 0 1rem 0', whiteSpace: 'pre-wrap' }}>{text || 'Sin texto introducido...'}</p>
 
-                {/* Carusel / Visor de Archivos */}
+                {/* Visor de Galería */}
                 {mediaItems.length > 0 ? (
                   <div style={{ marginBottom: '1rem' }}>
                     <div style={{ position: 'relative', width: '100%', height: '280px', backgroundColor: '#000', borderRadius: '8px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -546,11 +560,11 @@ export default function App() {
                       ) : (
                         <div style={{ color: '#fff', textAlign: 'center', padding: '1rem' }}>
                           📁 <strong>{mediaItems[currentMediaIndex].name}</strong>
-                          <p style={{ fontSize: '0.8rem', color: '#aaa', margin: '0.5rem 0 0 0' }}>(Archivo guardado en disco local)</p>
+                          <p style={{ fontSize: '0.8rem', color: '#aaa', margin: '0.5rem 0 0 0' }}>(Cargando vista previa local...)</p>
                         </div>
                       )}
 
-                      {/* Botones de navegación Anterior / Siguiente */}
+                      {/* Navegación Anterior / Siguiente */}
                       {mediaItems.length > 1 && (
                         <>
                           <button
@@ -625,13 +639,22 @@ export default function App() {
                   </div>
                 )}
 
-                <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '1.5rem' }}>
-                  {selectedPlatforms.map((p) => (
-                    <span key={p} style={{ fontSize: '0.7rem', backgroundColor: '#e2e8f0', padding: '0.2rem 0.5rem', borderRadius: '4px', textTransform: 'uppercase', fontWeight: 'bold', color: '#475569' }}>
-                      {p}
-                    </span>
-                  ))}
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 'bold', color: '#64748b', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Redes seleccionadas:
+                  </label>
+                  <div style={{ display: 'flex', gap: '0.4rem' }}>
+                    {selectedPlatforms.map((p) => (
+                      <span key={p} style={{ fontSize: '0.7rem', backgroundColor: '#e2e8f0', padding: '0.2rem 0.5rem', borderRadius: '4px', textTransform: 'uppercase', fontWeight: 'bold', color: '#475569' }}>
+                        {p}
+                      </span>
+                    ))}
+                  </div>
                 </div>
+
+                <p style={{ fontSize: '0.75rem', color: '#94a3b8', fontStyle: 'italic', margin: '1rem 0 1.5rem 0', borderTop: '1px solid #f1f5f9', paddingTop: '0.75rem' }}>
+                  * Nota: La publicación puede verse diferente o variar un poco de acuerdo a cada red social.
+                </p>
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                   <button
