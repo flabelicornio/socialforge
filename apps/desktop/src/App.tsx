@@ -15,6 +15,12 @@ interface Post {
   updatedAt: number;
 }
 
+interface MediaPreviewItem {
+  url: string;
+  type: 'image' | 'video';
+  name: string;
+}
+
 export default function App() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -25,6 +31,7 @@ export default function App() {
   const [linkUrl, setLinkUrl] = useState<string>('');
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(['facebook', 'instagram']);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [filePreviews, setFilePreviews] = useState<MediaPreviewItem[]>([]);
   const [existingMediaIds, setExistingMediaIds] = useState<string[]>([]);
   const [saving, setSaving] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor');
@@ -60,6 +67,7 @@ export default function App() {
     setLinkUrl('');
     setSelectedPlatforms(['facebook', 'instagram']);
     setSelectedFiles([]);
+    setFilePreviews([]);
     setExistingMediaIds([]);
     setActiveTab('editor');
     setShowModal(true);
@@ -72,6 +80,7 @@ export default function App() {
     setSelectedPlatforms(parseJsonArray(post.platforms));
     setExistingMediaIds(parseJsonArray(post.mediaIds));
     setSelectedFiles([]);
+    setFilePreviews([]);
     setActiveTab('editor');
     setShowModal(true);
   };
@@ -80,11 +89,20 @@ export default function App() {
     if (e.target.files) {
       const filesArray = Array.from(e.target.files);
       setSelectedFiles((prev) => [...prev, ...filesArray]);
+
+      const newPreviews: MediaPreviewItem[] = filesArray.map((file) => ({
+        url: URL.createObjectURL(file),
+        type: file.type.startsWith('video/') ? 'video' : 'image',
+        name: file.name,
+      }));
+
+      setFilePreviews((prev) => [...prev, ...newPreviews]);
     }
   };
 
   const removeNewFile = (index: number) => {
     setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+    setFilePreviews((prev) => prev.filter((_, i) => i !== index));
   };
 
   const removeExistingMedia = (index: number) => {
@@ -167,7 +185,7 @@ export default function App() {
   };
 
   return (
-    <div style={{ maxWidth: '800px', margin: '0 auto', padding: '2rem', fontFamily: 'system-ui, sans-serif' }}>
+    <div style={{ maxWidth: '820px', margin: '0 auto', padding: '2rem', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <div>
           <h1 style={{ margin: 0, fontSize: '1.8rem', fontWeight: 'bold' }}>SocialForge</h1>
@@ -319,7 +337,7 @@ export default function App() {
               borderRadius: '8px',
               padding: '1.5rem',
               width: '100%',
-              maxWidth: '560px',
+              maxWidth: '580px',
               maxHeight: '90vh',
               overflowY: 'auto',
               boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
@@ -386,7 +404,7 @@ export default function App() {
 
                   {existingMediaIds.length > 0 && (
                     <div style={{ marginBottom: '0.5rem' }}>
-                      <span style={{ fontSize: '0.75rem', color: '#666' }}>Archivos guardados previamente:</span>
+                      <span style={{ fontSize: '0.75rem', color: '#666' }}>Archivos guardados en disco:</span>
                       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.2rem' }}>
                         {existingMediaIds.map((mId, idx) => (
                           <div
@@ -522,7 +540,7 @@ export default function App() {
             ) : (
               <div>
                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.5rem' }}>
-                  {['facebook', 'instagram', 'linkedin'].map((p) => (
+                  {['facebook', 'instagram', 'linkedin', 'x'].map((p) => (
                     <button
                       key={p}
                       type="button"
@@ -544,86 +562,101 @@ export default function App() {
                   ))}
                 </div>
 
-                {/* Simulated Social Feed Card */}
-                <div
-                  style={{
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '8px',
-                    padding: '1rem',
-                    backgroundColor: '#fff',
-                    maxWidth: '400px',
-                    margin: '0 auto',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.8rem' }}>
-                    <div
-                      style={{
-                        width: '38px',
-                        height: '38px',
-                        borderRadius: '50%',
-                        backgroundColor: '#0066cc',
-                        color: 'white',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontWeight: 'bold',
-                        fontSize: '0.9rem',
-                      }}
-                    >
-                      SF
+                {/* Feed Specific Cards */}
+                {previewPlatform === 'facebook' && (
+                  <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '1rem', backgroundColor: '#fff', boxShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.8rem' }}>
+                      <div style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: '#1877f2', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
+                        SF
+                      </div>
+                      <div>
+                        <strong style={{ display: 'block', fontSize: '0.9rem' }}>SocialForge LATAM</strong>
+                        <span style={{ fontSize: '0.75rem', color: '#65676b' }}>Hace un momento • 🌎</span>
+                      </div>
                     </div>
-                    <div>
-                      <strong style={{ display: 'block', fontSize: '0.85rem' }}>SocialForge User</strong>
-                      <span style={{ fontSize: '0.7rem', color: '#64748b' }}>
-                        Simulación de Feed • {previewPlatform.toUpperCase()}
-                      </span>
+                    <p style={{ fontSize: '0.9rem', margin: '0 0 0.8rem 0', whiteSpace: 'pre-wrap' }}>{text || 'Escribe tu contenido...'}</p>
+                    {filePreviews.length > 0 && (
+                      <div style={{ borderRadius: '6px', overflow: 'hidden', marginBottom: '0.8rem', maxHeight: '280px', display: 'flex', justifyContent: 'center', backgroundColor: '#000' }}>
+                        {filePreviews[0].type === 'image' ? (
+                          <img src={filePreviews[0].url} alt="Media" style={{ maxWidth: '100%', maxHeight: '280px', objectFit: 'contain' }} />
+                        ) : (
+                          <video src={filePreviews[0].url} controls style={{ maxWidth: '100%', maxHeight: '280px' }} />
+                        )}
+                      </div>
+                    )}
+                    {linkUrl && (
+                      <div style={{ border: '1px solid #e4e6eb', borderRadius: '6px', padding: '0.6rem', backgroundColor: '#f0f2f5', fontSize: '0.8rem', color: '#1877f2' }}>
+                        🔗 {linkUrl}
+                      </div>
+                    )}
+                    <div style={{ borderTop: '1px solid #e4e6eb', marginTop: '0.8rem', paddingTop: '0.6rem', display: 'flex', justifyContent: 'space-around', fontSize: '0.8rem', color: '#65676b', fontWeight: 'bold' }}>
+                      <span>👍 Me gusta</span>
+                      <span>💬 Comentar</span>
+                      <span>↪️ Compartir</span>
                     </div>
                   </div>
+                )}
 
-                  <p style={{ fontSize: '0.9rem', whiteSpace: 'pre-wrap', margin: '0 0 0.8rem 0', color: '#1e293b' }}>
-                    {text || 'Escribe un texto en el editor para ver la vista previa...'}
-                  </p>
-
-                  {(existingMediaIds.length > 0 || selectedFiles.length > 0) && (
-                    <div
-                      style={{
-                        height: '180px',
-                        backgroundColor: '#f8fafc',
-                        border: '1px dashed #cbd5e1',
-                        borderRadius: '6px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: '#64748b',
-                        fontSize: '0.85rem',
-                        marginBottom: '0.8rem',
-                      }}
-                    >
-                      <span>🖼️ Preview de Galería</span>
-                      <span style={{ fontSize: '0.75rem', marginTop: '0.2rem' }}>
-                        {existingMediaIds.length + selectedFiles.length} elemento(s) adjunto(s)
-                      </span>
+                {previewPlatform === 'instagram' && (
+                  <div style={{ border: '1px solid #dbdbdb', borderRadius: '8px', backgroundColor: '#fff', overflow: 'hidden' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.6rem 0.8rem' }}>
+                      <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '0.8rem' }}>
+                        SF
+                      </div>
+                      <strong style={{ fontSize: '0.85rem' }}>socialforge_app</strong>
                     </div>
-                  )}
-
-                  {linkUrl && (
-                    <div
-                      style={{
-                        border: '1px solid #e2e8f0',
-                        borderRadius: '6px',
-                        padding: '0.6rem',
-                        backgroundColor: '#f8fafc',
-                        fontSize: '0.8rem',
-                        color: '#0066cc',
-                        wordBreak: 'break-all',
-                      }}
-                    >
-                      🔗 {linkUrl}
+                    <div style={{ width: '100%', height: '260px', backgroundColor: '#fafafa', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderTop: '1px solid #efefef', borderBottom: '1px solid #efefef' }}>
+                      {filePreviews.length > 0 ? (
+                        filePreviews[0].type === 'image' ? (
+                          <img src={filePreviews[0].url} alt="Media" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                          <video src={filePreviews[0].url} controls style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        )
+                      ) : (
+                        <span style={{ color: '#8e8e8e', fontSize: '0.85rem' }}>📷 Adjunta una imagen/video para Instagram</span>
+                      )}
                     </div>
-                  )}
-                </div>
+                    <div style={{ padding: '0.8rem' }}>
+                      <div style={{ display: 'flex', gap: '0.8rem', marginBottom: '0.5rem', fontSize: '1.1rem' }}>
+                        <span>❤️</span>
+                        <span>💬</span>
+                        <span>✈️</span>
+                      </div>
+                      <p style={{ margin: 0, fontSize: '0.85rem', whiteSpace: 'pre-wrap' }}>
+                        <strong>socialforge_app</strong> {text || 'Pie de foto aquí...'}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {previewPlatform === 'linkedin' && (
+                  <div style={{ border: '1px solid #e0e0e0', borderRadius: '8px', padding: '1rem', backgroundColor: '#fff' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.8rem' }}>
+                      <div style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: '#0a66c2', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
+                        SF
+                      </div>
+                      <div>
+                        <strong style={{ display: 'block', fontSize: '0.85rem' }}>SocialForge Official</strong>
+                        <span style={{ fontSize: '0.7rem', color: '#666' }}>12,450 seguidores • Promocionado</span>
+                      </div>
+                    </div>
+                    <p style={{ fontSize: '0.85rem', margin: '0 0 0.8rem 0', whiteSpace: 'pre-wrap' }}>{text || 'Contenido profesional...'}</p>
+                    {filePreviews.length > 0 && (
+                      <div style={{ borderRadius: '4px', overflow: 'hidden', marginBottom: '0.8rem', maxHeight: '240px', display: 'flex', justifyContent: 'center', backgroundColor: '#000' }}>
+                        {filePreviews[0].type === 'image' ? (
+                          <img src={filePreviews[0].url} alt="Media" style={{ maxWidth: '100%', maxHeight: '240px', objectFit: 'contain' }} />
+                        ) : (
+                          <video src={filePreviews[0].url} controls style={{ maxWidth: '100%', maxHeight: '240px' }} />
+                        )}
+                      </div>
+                    )}
+                    <div style={{ borderTop: '1px solid #e0e0e0', marginTop: '0.8rem', paddingTop: '0.5rem', display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#666', fontWeight: '600' }}>
+                      <span>👍 Recomendar</span>
+                      <span>💬 Comentar</span>
+                      <span>🔁 Repostear</span>
+                    </div>
+                  </div>
+                )}
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
                   <button
