@@ -56,11 +56,12 @@ fn get_conn<'a>(state: &'a State<'_, DbState>) -> std::sync::MutexGuard<'a, Conn
 
 #[tauri::command]
 fn list_posts(workspace_id: String, state: State<DbState>) -> Result<Vec<Post>, String> {
+    let target_workspace = if workspace_id.trim().is_empty() { "default".to_string() } else { workspace_id };
     let conn = get_conn(&state);
     let mut stmt = conn.prepare(
         "SELECT id, workspace_id, text, platforms, media_ids, scheduled_for, status, failure_reason, link_url, created_at, updated_at FROM posts WHERE workspace_id = ?1 ORDER BY scheduled_for ASC, created_at DESC",
     ).map_err(|e| e.to_string())?;
-    let posts = stmt.query_map(params![workspace_id], |row| {
+    let posts = stmt.query_map(params![target_workspace], |row| {
         Ok(Post {
             id: row.get(0)?, workspace_id: row.get(1)?, text: row.get(2)?, platforms: row.get(3)?,
             media_ids: row.get(4)?, scheduled_for: row.get(5)?, status: row.get(6)?,
@@ -73,15 +74,23 @@ fn list_posts(workspace_id: String, state: State<DbState>) -> Result<Vec<Post>, 
 #[tauri::command]
 fn create_post(input: CreatePostInput, state: State<DbState>) -> Result<Post, String> {
     let conn = get_conn(&state);
+    let workspace_id = if input.workspace_id.trim().is_empty() { "default".to_string() } else { input.workspace_id.clone() };
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().timestamp_millis();
+
+    // Garantizar que el workspace exista antes de relacionar el post
+    conn.execute(
+        "INSERT OR IGNORE INTO workspaces (id, name, created_at) VALUES (?1, 'Mi Espacio', ?2)",
+        params![workspace_id, now],
+    ).map_err(|e| e.to_string())?;
+
     let platforms_json = serde_json::to_string(&input.platforms).map_err(|e| e.to_string())?;
     let media_ids_json = serde_json::to_string(&input.media_ids).map_err(|e| e.to_string())?;
     let status = if input.scheduled_for.is_some() { "PENDING" } else { "READY_FOR_USER" };
 
     conn.execute(
         "INSERT INTO posts (id, workspace_id, text, platforms, media_ids, scheduled_for, status, link_url, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-        params![id, input.workspace_id, input.text, platforms_json, media_ids_json, input.scheduled_for, status, input.link_url, now, now],
+        params![id, workspace_id, input.text, platforms_json, media_ids_json, input.scheduled_for, status, input.link_url, now, now],
     ).map_err(|e| e.to_string())?;
 
     if let Some(run_at) = input.scheduled_for {
@@ -94,7 +103,7 @@ fn create_post(input: CreatePostInput, state: State<DbState>) -> Result<Post, St
         }
     }
 
-    Ok(Post { id, workspace_id: input.workspace_id, text: input.text, platforms: platforms_json, media_ids: media_ids_json, scheduled_for: input.scheduled_for, status: status.to_string(), failure_reason: None, link_url: input.link_url, created_at: now, updated_at: now })
+    Ok(Post { id, workspace_id, text: input.text, platforms: platforms_json, media_ids: media_ids_json, scheduled_for: input.scheduled_for, status: status.to_string(), failure_reason: None, link_url: input.link_url, created_at: now, updated_at: now })
 }
 
 #[tauri::command]
@@ -162,6 +171,7 @@ fn complete_facebook_connection(state_param: String, workspace_id: String, db_st
     let conn = get_conn(&db_state);
     let now = chrono::Utc::now().timestamp_millis();
     let mut saved: Vec<AccountSummary> = Vec::new();
+    let target_workspace = if workspace_id.trim().is_empty() { "default".to_string() } else { workspace_id };
 
     for page in pages {
         let page_id = page.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
@@ -176,7 +186,7 @@ fn complete_facebook_connection(state_param: String, workspace_id: String, db_st
 
         conn.execute(
             "INSERT INTO accounts (id, workspace_id, platform, display_name, connected_at, external_account_id, extra_json) VALUES (?1, ?2, 'facebook', ?3, ?4, ?5, ?6)",
-            params![account_id, workspace_id, page_name, now, page_id, extra_json],
+            params![account_id, target_workspace, page_name, now, page_id, extra_json],
         ).map_err(|e| e.to_string())?;
 
         let entry = keyring::Entry::new(KEYRING_SERVICE, &account_id)
@@ -191,9 +201,10 @@ fn complete_facebook_connection(state_param: String, workspace_id: String, db_st
 
 #[tauri::command]
 fn list_connected_accounts(workspace_id: String, state: State<DbState>) -> Result<Vec<AccountSummary>, String> {
+    let target_workspace = if workspace_id.trim().is_empty() { "default".to_string() } else { workspace_id };
     let conn = get_conn(&state);
     let mut stmt = conn.prepare("SELECT id, platform, display_name, external_account_id, connected_at FROM accounts WHERE workspace_id = ?1 ORDER BY connected_at DESC").map_err(|e| e.to_string())?;
-    let accounts = stmt.query_map(params![workspace_id], |row| {
+    let accounts = stmt.query_map(params![target_workspace], |row| {
         Ok(AccountSummary { id: row.get(0)?, platform: row.get(1)?, display_name: row.get(2)?, external_account_id: row.get(3)?, connected_at: row.get(4)? })
     }).map_err(|e| e.to_string())?.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
     Ok(accounts)
@@ -234,8 +245,20 @@ fn main() {
             std::fs::create_dir_all(&app_dir).expect("create app_data_dir");
             let db_path = app_dir.join("socialforge.db");
             let conn = Connection::open(&db_path).expect("open db failed");
-            conn.execute_batch("PRAGMA journal_mode=WAL;").ok();
+            conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys = ON;").ok();
             run_migrations(&conn);
+
+            // Semilla obligatoria: Asegurar que el workspace 'default' exista siempre
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as i64;
+            
+            conn.execute(
+                "INSERT OR IGNORE INTO workspaces (id, name, created_at) VALUES ('default', 'Mi Espacio', ?1)",
+                params![now],
+            ).ok();
+
             app.manage(DbState { conn: Mutex::new(conn) });
             Ok(())
         })
