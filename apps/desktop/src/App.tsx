@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 
 interface Post {
@@ -7,24 +7,24 @@ interface Post {
   text: string;
   platforms: string;
   mediaIds: string;
-  scheduledFor?: number;
+  scheduledFor?: number | null;
   status: string;
-  failureReason?: string;
-  linkUrl?: string;
+  failureReason?: string | null;
+  linkUrl?: string | null;
   createdAt: number;
   updatedAt: number;
 }
 
 export function App() {
   const [posts, setPosts] = useState<Post[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [text, setText] = useState('');
-  const [linkUrl, setLinkUrl] = useState('');
+  const [loading, setLoading] = useState<boolean>(true);
+  const [showModal, setShowModal] = useState<boolean>(false);
+  const [text, setText] = useState<string>('');
+  const [linkUrl, setLinkUrl] = useState<string>('');
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(['facebook', 'instagram']);
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState<boolean>(false);
 
-  const loadPosts = async () => {
+  const loadPosts = async (): Promise<void> => {
     try {
       setLoading(true);
       const res = await invoke<Post[]>('list_posts', { workspaceId: 'default' });
@@ -40,7 +40,7 @@ export function App() {
     loadPosts();
   }, []);
 
-  const handleCreatePost = async (e: React.FormEvent) => {
+  const handleCreatePost = async (e: React.FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault();
     if (!text.trim()) return;
 
@@ -49,7 +49,7 @@ export function App() {
       await invoke('create_post', {
         input: {
           workspaceId: 'default',
-          text,
+          text: text,
           platforms: selectedPlatforms,
           mediaIds: [],
           scheduledFor: null,
@@ -68,7 +68,7 @@ export function App() {
     }
   };
 
-  const handleDeletePost = async (id: string) => {
+  const handleDeletePost = async (id: string): Promise<void> => {
     if (!confirm('¿Seguro que deseas eliminar esta publicación?')) return;
     try {
       await invoke('delete_post', { id });
@@ -78,11 +78,11 @@ export function App() {
     }
   };
 
-  const togglePlatform = (p: string) => {
-    if (selectedPlatforms.includes(p)) {
-      setSelectedPlatforms(selectedPlatforms.filter((item) => item !== p));
+  const togglePlatform = (platform: string): void => {
+    if (selectedPlatforms.includes(platform)) {
+      setSelectedPlatforms(selectedPlatforms.filter((p) => p !== platform));
     } else {
-      setSelectedPlatforms([...selectedPlatforms, p]);
+      setSelectedPlatforms([...selectedPlatforms, platform]);
     }
   };
 
@@ -227,23 +227,23 @@ export function App() {
                   Plataformas objetivo
                 </label>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  {['facebook', 'instagram', 'x', 'linkedin'].map((p) => (
+                  {['facebook', 'instagram', 'x', 'linkedin'].map((platform) => (
                     <button
                       type="button"
-                      key={p}
-                      onClick={() => togglePlatform(p)}
+                      key={platform}
+                      onClick={() => togglePlatform(platform)}
                       style={{
                         padding: '0.4rem 0.8rem',
                         borderRadius: '4px',
                         border: '1px solid #ccc',
-                        backgroundColor: selectedPlatforms.includes(p) ? '#0066cc' : '#f0f0f0',
-                        color: selectedPlatforms.includes(p) ? 'white' : '#333',
+                        backgroundColor: selectedPlatforms.includes(platform) ? '#0066cc' : '#f0f0f0',
+                        color: selectedPlatforms.includes(platform) ? 'white' : '#333',
                         cursor: 'pointer',
                         fontSize: '0.8rem',
                         textTransform: 'capitalize',
                       }}
                     >
-                      {p}
+                      {platform}
                     </button>
                   ))}
                 </div>
