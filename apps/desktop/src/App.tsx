@@ -19,7 +19,6 @@ interface MediaItem {
   url: string;
   type: 'image' | 'video';
   name: string;
-  isExisting?: boolean;
 }
 
 export default function App() {
@@ -32,10 +31,8 @@ export default function App() {
   const [linkUrl, setLinkUrl] = useState<string>('');
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(['facebook', 'instagram']);
   
-  // Archivos
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  // Archivos multimedia (Manejados en Base64 para carga instantánea)
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
-  const [existingMediaIds, setExistingMediaIds] = useState<string[]>([]);
   const [saving, setSaving] = useState<boolean>(false);
   
   // Vista Previa Modal
@@ -58,7 +55,7 @@ export default function App() {
     loadPosts();
   }, []);
 
-  const parseJsonArray = (jsonString: string): string[] => {
+  const parseJsonArray = (jsonString: string): any[] => {
     try {
       return JSON.parse(jsonString) || [];
     } catch {
@@ -71,112 +68,66 @@ export default function App() {
     setText('');
     setLinkUrl('');
     setSelectedPlatforms(['facebook', 'instagram']);
-    setSelectedFiles([]);
     setMediaItems([]);
-    setExistingMediaIds([]);
     setCurrentMediaIndex(0);
     setActiveTab('editor');
     setShowModal(true);
   };
 
-  // Convertir bytes recibidos de Rust a Blob URL
-  const loadExistingMediaUrl = async (mediaId: string): Promise<string> => {
-    try {
-      const bytes = await invoke<number[]>('read_media_file', { fileName: mediaId });
-      const isVideo = mediaId.match(/\.(mp4|mov|webm)$/i);
-      const mimeType = isVideo ? 'video/mp4' : 'image/jpeg';
-      const blob = new Blob([new Uint8Array(bytes)], { type: mimeType });
-      return URL.createObjectURL(blob);
-    } catch (err) {
-      console.error('Error al leer archivo multimedia local:', err);
-      return '';
-    }
-  };
-
-  const openEditModal = async (post: Post) => {
+  const openEditModal = (post: Post) => {
     setEditingPostId(post.id);
     setText(post.text);
     setLinkUrl(post.linkUrl || '');
     setSelectedPlatforms(parseJsonArray(post.platforms));
     
-    const savedMedia = parseJsonArray(post.mediaIds);
-    setExistingMediaIds(savedMedia);
-    setSelectedFiles([]);
-
-    // Cargar URLs binarias locales
-    const loadedItems: MediaItem[] = await Promise.all(
-      savedMedia.map(async (id) => {
-        const isVid = id.match(/\.(mp4|mov|webm)$/i) !== null;
-        const objectUrl = await loadExistingMediaUrl(id);
-        return {
-          url: objectUrl,
-          type: isVid ? 'video' : 'image',
-          name: id.split('_').slice(1).join('_') || id,
-          isExisting: true,
-        };
-      })
-    );
-
-    setMediaItems(loadedItems);
+    // Cargar media directamente desde Base64 guardado
+    const savedMedia: MediaItem[] = parseJsonArray(post.mediaIds);
+    setMediaItems(savedMedia);
     setCurrentMediaIndex(0);
     setActiveTab('editor');
     setShowModal(true);
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const convertFileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const filesArray = Array.from(e.target.files);
-      setSelectedFiles((prev) => [...prev, ...filesArray]);
+      const newItems: MediaItem[] = [];
 
-      const newItems: MediaItem[] = filesArray.map((file) => ({
-        url: URL.createObjectURL(file),
-        type: file.type.startsWith('video/') ? 'video' : 'image',
-        name: file.name,
-        isExisting: false,
-      }));
+      for (const file of filesArray) {
+        const base64Url = await convertFileToBase64(file);
+        newItems.push({
+          url: base64Url,
+          type: file.type.startsWith('video/') ? 'video' : 'image',
+          name: file.name,
+        });
+      }
 
       setMediaItems((prev) => [...prev, ...newItems]);
     }
   };
 
   const removeMediaItem = (index: number) => {
-    const itemToRemove = mediaItems[index];
     setMediaItems((prev) => prev.filter((_, i) => i !== index));
-
-    if (itemToRemove.isExisting) {
-      setExistingMediaIds((prev) => prev.filter((id) => !id.includes(itemToRemove.name)));
-    } else {
-      setSelectedFiles((prev) => prev.filter((f) => f.name !== itemToRemove.name));
-    }
-
     if (currentMediaIndex >= mediaItems.length - 1) {
       setCurrentMediaIndex(Math.max(0, mediaItems.length - 2));
     }
   };
 
-  const fileToByteArray = async (file: File): Promise<number[]> => {
-    const arrayBuffer = await file.arrayBuffer();
-    return Array.from(new Uint8Array(arrayBuffer));
-  };
-
-  const handleSavePost = async (e?: React.FormEvent<HTMLFormElement>): Promise<void> => {
+  const handleSavePost = async (e?: React.FormEvent): Promise<void> => {
     if (e) e.preventDefault();
     if (!text.trim()) return;
 
     try {
       setSaving(true);
-
-      const newMediaIds: string[] = [];
-      for (const file of selectedFiles) {
-        const bytes = await fileToByteArray(file);
-        const mediaId = await invoke<string>('save_media_file', {
-          fileName: file.name,
-          fileBytes: bytes,
-        });
-        newMediaIds.push(mediaId);
-      }
-
-      const totalMediaIds = [...existingMediaIds, ...newMediaIds];
 
       if (editingPostId) {
         await invoke('update_post', {
@@ -184,7 +135,7 @@ export default function App() {
             id: editingPostId,
             text: text,
             platforms: selectedPlatforms,
-            mediaIds: totalMediaIds,
+            mediaIds: mediaItems, // Guardamos los objetos Base64
             scheduledFor: null,
             linkUrl: linkUrl.trim() ? linkUrl.trim() : null,
           },
@@ -195,7 +146,7 @@ export default function App() {
             workspaceId: 'default',
             text: text,
             platforms: selectedPlatforms,
-            mediaIds: totalMediaIds,
+            mediaIds: mediaItems, // Guardamos los objetos Base64
             scheduledFor: null,
             linkUrl: linkUrl.trim() ? linkUrl.trim() : null,
           },
@@ -386,309 +337,289 @@ export default function App() {
               maxHeight: '90vh',
               overflowY: 'auto',
               boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+              display: 'flex',
+              flexDirection: 'column',
+              justify: 'space-between',
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h3 style={{ margin: 0 }}>{editingPostId ? 'Editar Publicación' : 'Nueva Publicación'}</h3>
-              <div style={{ display: 'flex', gap: '0.3rem', backgroundColor: '#f1f5f9', padding: '0.2rem', borderRadius: '6px' }}>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('editor')}
-                  style={{
-                    padding: '0.3rem 0.8rem',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontSize: '0.8rem',
-                    fontWeight: 'bold',
-                    backgroundColor: activeTab === 'editor' ? '#fff' : 'transparent',
-                    boxShadow: activeTab === 'editor' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
-                  }}
-                >
-                  ✏️ Editor
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('preview')}
-                  style={{
-                    padding: '0.3rem 0.8rem',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontSize: '0.8rem',
-                    fontWeight: 'bold',
-                    backgroundColor: activeTab === 'preview' ? '#fff' : 'transparent',
-                    boxShadow: activeTab === 'preview' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
-                  }}
-                >
-                  👁️ Vista Previa
-                </button>
-              </div>
-            </div>
+            {/* Contenido según Pestaña */}
+            <div>
+              {activeTab === 'editor' ? (
+                <form id="post-form" onSubmit={handleSavePost}>
+                  <div style={{ marginBottom: '1rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.3rem' }}>
+                      Texto de la publicación
+                    </label>
+                    <textarea
+                      value={text}
+                      onChange={(e) => setText(e.target.value)}
+                      placeholder="¿Qué quieres compartir?"
+                      rows={4}
+                      style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', boxSizing: 'border-box' }}
+                      required
+                    />
+                  </div>
 
-            {activeTab === 'editor' ? (
-              <form onSubmit={handleSavePost}>
-                <div style={{ marginBottom: '1rem' }}>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.3rem' }}>
-                    Texto de la publicación
-                  </label>
-                  <textarea
-                    value={text}
-                    onChange={(e) => setText(e.target.value)}
-                    placeholder="¿Qué quieres compartir?"
-                    rows={4}
-                    style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', boxSizing: 'border-box' }}
-                    required
-                  />
-                </div>
+                  <div style={{ marginBottom: '1rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.3rem' }}>
+                      Archivos Multimedia (Imágenes / Videos)
+                    </label>
 
-                <div style={{ marginBottom: '1rem' }}>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.3rem' }}>
-                    Archivos Multimedia (Imágenes / Videos)
-                  </label>
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/*,video/*"
+                      onChange={handleFileChange}
+                      style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem' }}
+                    />
 
-                  <input
-                    type="file"
-                    multiple
-                    accept="image/*,video/*"
-                    onChange={handleFileChange}
-                    style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem' }}
-                  />
+                    {mediaItems.length > 0 && (
+                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
+                        {mediaItems.map((item, idx) => (
+                          <div
+                            key={idx}
+                            style={{
+                              fontSize: '0.75rem',
+                              backgroundColor: '#f1f5f9',
+                              padding: '0.3rem 0.6rem',
+                              borderRadius: '4px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.4rem',
+                            }}
+                          >
+                            <span>📎 {item.name}</span>
+                            <button
+                              type="button"
+                              onClick={() => removeMediaItem(idx)}
+                              style={{ border: 'none', background: 'none', color: '#e53e3e', cursor: 'pointer', fontWeight: 'bold' }}
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
 
-                  {mediaItems.length > 0 && (
-                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
-                      {mediaItems.map((item, idx) => (
-                        <div
-                          key={idx}
+                  <div style={{ marginBottom: '1rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.3rem' }}>
+                      Enlace opcional (URL)
+                    </label>
+                    <input
+                      type="url"
+                      value={linkUrl}
+                      onChange={(e) => setLinkUrl(e.target.value)}
+                      placeholder="https://ejemplo.com"
+                      style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', boxSizing: 'border-box' }}
+                    />
+                  </div>
+
+                  <div style={{ marginBottom: '1.5rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.3rem' }}>
+                      Plataformas objetivo
+                    </label>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      {['facebook', 'instagram', 'x', 'linkedin'].map((platform) => (
+                        <button
+                          type="button"
+                          key={platform}
+                          onClick={() => togglePlatform(platform)}
                           style={{
-                            fontSize: '0.75rem',
-                            backgroundColor: item.isExisting ? '#e2e8f0' : '#f1f5f9',
-                            padding: '0.3rem 0.6rem',
+                            padding: '0.4rem 0.8rem',
                             borderRadius: '4px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '0.4rem',
+                            border: '1px solid #ccc',
+                            backgroundColor: selectedPlatforms.includes(platform) ? '#0066cc' : '#f0f0f0',
+                            color: selectedPlatforms.includes(platform) ? 'white' : '#333',
+                            cursor: 'pointer',
+                            fontSize: '0.8rem',
+                            textTransform: 'capitalize',
                           }}
                         >
-                          <span>{item.isExisting ? '💾' : '📎'} {item.name}</span>
-                          <button
-                            type="button"
-                            onClick={() => removeMediaItem(idx)}
-                            style={{ border: 'none', background: 'none', color: '#e53e3e', cursor: 'pointer', fontWeight: 'bold' }}
-                          >
-                            ✕
-                          </button>
-                        </div>
+                          {platform}
+                        </button>
                       ))}
                     </div>
-                  )}
-                </div>
-
-                <div style={{ marginBottom: '1rem' }}>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.3rem' }}>
-                    Enlace opcional (URL)
-                  </label>
-                  <input
-                    type="url"
-                    value={linkUrl}
-                    onChange={(e) => setLinkUrl(e.target.value)}
-                    placeholder="https://ejemplo.com"
-                    style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', boxSizing: 'border-box' }}
-                  />
-                </div>
-
-                <div style={{ marginBottom: '1.5rem' }}>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.3rem' }}>
-                    Plataformas objetivo
-                  </label>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    {['facebook', 'instagram', 'x', 'linkedin'].map((platform) => (
-                      <button
-                        type="button"
-                        key={platform}
-                        onClick={() => togglePlatform(platform)}
-                        style={{
-                          padding: '0.4rem 0.8rem',
-                          borderRadius: '4px',
-                          border: '1px solid #ccc',
-                          backgroundColor: selectedPlatforms.includes(platform) ? '#0066cc' : '#f0f0f0',
-                          color: selectedPlatforms.includes(platform) ? 'white' : '#333',
-                          cursor: 'pointer',
-                          fontSize: '0.8rem',
-                          textTransform: 'capitalize',
-                        }}
-                      >
-                        {platform}
-                      </button>
-                    ))}
                   </div>
-                </div>
+                </form>
+              ) : (
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '1.25rem', backgroundColor: '#fafafa' }}>
+                  <p style={{ fontSize: '0.95rem', margin: '0 0 1rem 0', whiteSpace: 'pre-wrap' }}>{text || 'Sin texto introducido...'}</p>
 
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-                  <button
-                    type="button"
-                    onClick={() => setShowModal(false)}
-                    style={{ padding: '0.5rem 1rem', borderRadius: '4px', border: '1px solid #ccc', backgroundColor: '#fff', cursor: 'pointer' }}
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    style={{
-                      padding: '0.5rem 1rem',
-                      borderRadius: '4px',
-                      border: 'none',
-                      backgroundColor: '#0066cc',
-                      color: 'white',
-                      cursor: 'pointer',
-                      fontWeight: 'bold',
-                    }}
-                  >
-                    {saving ? 'Guardando...' : editingPostId ? 'Actualizar' : 'Guardar en Local'}
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '1.25rem', backgroundColor: '#fafafa' }}>
-                <p style={{ fontSize: '0.95rem', margin: '0 0 1rem 0', whiteSpace: 'pre-wrap' }}>{text || 'Sin texto introducido...'}</p>
-
-                {/* Visor de Galería */}
-                {mediaItems.length > 0 ? (
-                  <div style={{ marginBottom: '1rem' }}>
-                    <div style={{ position: 'relative', width: '100%', height: '280px', backgroundColor: '#000', borderRadius: '8px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      {mediaItems[currentMediaIndex].url ? (
-                        mediaItems[currentMediaIndex].type === 'image' ? (
+                  {/* Visor de Galería */}
+                  {mediaItems.length > 0 ? (
+                    <div style={{ marginBottom: '1rem' }}>
+                      <div style={{ position: 'relative', width: '100%', height: '280px', backgroundColor: '#000', borderRadius: '8px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {mediaItems[currentMediaIndex]?.type === 'image' ? (
                           <img src={mediaItems[currentMediaIndex].url} alt="Preview" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
                         ) : (
                           <video src={mediaItems[currentMediaIndex].url} controls style={{ maxWidth: '100%', maxHeight: '100%' }} />
-                        )
-                      ) : (
-                        <div style={{ color: '#fff', textAlign: 'center', padding: '1rem' }}>
-                          📁 <strong>{mediaItems[currentMediaIndex].name}</strong>
-                          <p style={{ fontSize: '0.8rem', color: '#aaa', margin: '0.5rem 0 0 0' }}>(Cargando vista previa local...)</p>
-                        </div>
-                      )}
+                        )}
 
-                      {/* Navegación Anterior / Siguiente */}
-                      {mediaItems.length > 1 && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => setCurrentMediaIndex((prev) => (prev > 0 ? prev - 1 : mediaItems.length - 1))}
+                        {/* Navegación Anterior / Siguiente */}
+                        {mediaItems.length > 1 && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setCurrentMediaIndex((prev) => (prev > 0 ? prev - 1 : mediaItems.length - 1))}
+                              style={{
+                                position: 'absolute',
+                                left: '10px',
+                                backgroundColor: 'rgba(0,0,0,0.6)',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '50%',
+                                width: '32px',
+                                height: '32px',
+                                cursor: 'pointer',
+                                fontWeight: 'bold',
+                              }}
+                            >
+                              ◀
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setCurrentMediaIndex((prev) => (prev < mediaItems.length - 1 ? prev + 1 : 0))}
+                              style={{
+                                position: 'absolute',
+                                right: '10px',
+                                backgroundColor: 'rgba(0,0,0,0.6)',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '50%',
+                                width: '32px',
+                                height: '32px',
+                                cursor: 'pointer',
+                                fontWeight: 'bold',
+                              }}
+                            >
+                              ▶
+                            </button>
+                          </>
+                        )}
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', marginTop: '0.6rem' }}>
+                        {mediaItems.map((_, idx) => (
+                          <span
+                            key={idx}
+                            onClick={() => setCurrentMediaIndex(idx)}
                             style={{
-                              position: 'absolute',
-                              left: '10px',
-                              backgroundColor: 'rgba(0,0,0,0.6)',
-                              color: 'white',
-                              border: 'none',
+                              width: '8px',
+                              height: '8px',
                               borderRadius: '50%',
-                              width: '32px',
-                              height: '32px',
+                              backgroundColor: currentMediaIndex === idx ? '#0066cc' : '#ccc',
                               cursor: 'pointer',
-                              fontWeight: 'bold',
+                              display: 'inline-block',
                             }}
-                          >
-                            ◀
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setCurrentMediaIndex((prev) => (prev < mediaItems.length - 1 ? prev + 1 : 0))}
-                            style={{
-                              position: 'absolute',
-                              right: '10px',
-                              backgroundColor: 'rgba(0,0,0,0.6)',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '50%',
-                              width: '32px',
-                              height: '32px',
-                              cursor: 'pointer',
-                              fontWeight: 'bold',
-                            }}
-                          >
-                            ▶
-                          </button>
-                        </>
-                      )}
+                          />
+                        ))}
+                        <span style={{ fontSize: '0.75rem', color: '#666', marginLeft: '0.5rem' }}>
+                          {currentMediaIndex + 1} de {mediaItems.length}
+                        </span>
+                      </div>
                     </div>
+                  ) : (
+                    <div style={{ border: '1px dashed #cbd5e1', padding: '1.5rem', textAlign: 'center', borderRadius: '6px', color: '#64748b', fontSize: '0.85rem', marginBottom: '1rem' }}>
+                      📷 No se han adjuntado fotos ni videos
+                    </div>
+                  )}
 
-                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', marginTop: '0.6rem' }}>
-                      {mediaItems.map((_, idx) => (
-                        <span
-                          key={idx}
-                          onClick={() => setCurrentMediaIndex(idx)}
-                          style={{
-                            width: '8px',
-                            height: '8px',
-                            borderRadius: '50%',
-                            backgroundColor: currentMediaIndex === idx ? '#0066cc' : '#ccc',
-                            cursor: 'pointer',
-                            display: 'inline-block',
-                          }}
-                        />
+                  {linkUrl && (
+                    <div style={{ border: '1px solid #cbd5e1', borderRadius: '6px', padding: '0.6rem', backgroundColor: '#fff', fontSize: '0.85rem', color: '#0066cc', marginBottom: '1rem' }}>
+                      🔗 <a href={linkUrl} target="_blank" rel="noreferrer" style={{ color: '#0066cc' }}>{linkUrl}</a>
+                    </div>
+                  )}
+
+                  <div style={{ marginBottom: '1rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 'bold', color: '#64748b', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      Redes seleccionadas:
+                    </label>
+                    <div style={{ display: 'flex', gap: '0.4rem' }}>
+                      {selectedPlatforms.map((p) => (
+                        <span key={p} style={{ fontSize: '0.7rem', backgroundColor: '#e2e8f0', padding: '0.2rem 0.5rem', borderRadius: '4px', textTransform: 'uppercase', fontWeight: 'bold', color: '#475569' }}>
+                          {p}
+                        </span>
                       ))}
-                      <span style={{ fontSize: '0.75rem', color: '#666', marginLeft: '0.5rem' }}>
-                        {currentMediaIndex + 1} de {mediaItems.length}
-                      </span>
                     </div>
                   </div>
-                ) : (
-                  <div style={{ border: '1px dashed #cbd5e1', padding: '1.5rem', textAlign: 'center', borderRadius: '6px', color: '#64748b', fontSize: '0.85rem', marginBottom: '1rem' }}>
-                    📷 No se han adjuntado fotos ni videos
-                  </div>
-                )}
 
-                {linkUrl && (
-                  <div style={{ border: '1px solid #cbd5e1', borderRadius: '6px', padding: '0.6rem', backgroundColor: '#fff', fontSize: '0.85rem', color: '#0066cc', marginBottom: '1rem' }}>
-                    🔗 <a href={linkUrl} target="_blank" rel="noreferrer" style={{ color: '#0066cc' }}>{linkUrl}</a>
-                  </div>
-                )}
-
-                <div style={{ marginBottom: '1rem' }}>
-                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 'bold', color: '#64748b', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    Redes seleccionadas:
-                  </label>
-                  <div style={{ display: 'flex', gap: '0.4rem' }}>
-                    {selectedPlatforms.map((p) => (
-                      <span key={p} style={{ fontSize: '0.7rem', backgroundColor: '#e2e8f0', padding: '0.2rem 0.5rem', borderRadius: '4px', textTransform: 'uppercase', fontWeight: 'bold', color: '#475569' }}>
-                        {p}
-                      </span>
-                    ))}
-                  </div>
+                  <p style={{ fontSize: '0.75rem', color: '#94a3b8', fontStyle: 'italic', margin: '0.5rem 0 0 0' }}>
+                    * Nota: La publicación puede verse diferente o variar un poco de acuerdo a cada red social.
+                  </p>
                 </div>
+              )}
+            </div>
 
-                <p style={{ fontSize: '0.75rem', color: '#94a3b8', fontStyle: 'italic', margin: '1rem 0 1.5rem 0', borderTop: '1px solid #f1f5f9', paddingTop: '0.75rem' }}>
-                  * Nota: La publicación puede verse diferente o variar un poco de acuerdo a cada red social.
-                </p>
-
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+            {/* SECCIÓN INFERIOR AGRUPADA (Título, Conmutador Editor/Preview, Botones de Acción) */}
+            <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '1rem', marginTop: '1.25rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <h3 style={{ margin: 0, fontSize: '1.1rem' }}>
+                  {editingPostId ? 'Editar Publicación' : 'Nueva Publicación'}
+                </h3>
+                
+                <div style={{ display: 'flex', gap: '0.3rem', backgroundColor: '#f1f5f9', padding: '0.2rem', borderRadius: '6px' }}>
                   <button
                     type="button"
-                    onClick={() => setShowModal(false)}
-                    style={{ padding: '0.5rem 1rem', borderRadius: '4px', border: '1px solid #ccc', backgroundColor: '#fff', cursor: 'pointer' }}
+                    onClick={() => setActiveTab('editor')}
+                    style={{
+                      padding: '0.35rem 0.8rem',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '0.8rem',
+                      fontWeight: 'bold',
+                      backgroundColor: activeTab === 'editor' ? '#fff' : 'transparent',
+                      boxShadow: activeTab === 'editor' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
+                    }}
                   >
-                    Cerrar
+                    ✏️ Editor
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleSavePost()}
-                    disabled={saving}
+                    onClick={() => setActiveTab('preview')}
                     style={{
-                      padding: '0.5rem 1rem',
-                      borderRadius: '4px',
+                      padding: '0.35rem 0.8rem',
                       border: 'none',
-                      backgroundColor: '#0066cc',
-                      color: 'white',
+                      borderRadius: '4px',
                       cursor: 'pointer',
+                      fontSize: '0.8rem',
                       fontWeight: 'bold',
+                      backgroundColor: activeTab === 'preview' ? '#fff' : 'transparent',
+                      boxShadow: activeTab === 'preview' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
                     }}
                   >
-                    {saving ? 'Guardando...' : editingPostId ? 'Actualizar' : 'Guardar en Local'}
+                    👁️ Vista Previa
                   </button>
                 </div>
               </div>
-            )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  style={{ padding: '0.5rem 1.2rem', borderRadius: '4px', border: '1px solid #ccc', backgroundColor: '#fff', cursor: 'pointer', fontWeight: '500' }}
+                >
+                  Cerrar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSavePost()}
+                  disabled={saving}
+                  style={{
+                    padding: '0.5rem 1.2rem',
+                    borderRadius: '4px',
+                    border: 'none',
+                    backgroundColor: '#0066cc',
+                    color: 'white',
+                    cursor: 'pointer',
+                    fontWeight: 'bold',
+                  }}
+                >
+                  {saving ? 'Guardando...' : editingPostId ? 'Actualizar' : 'Guardar en Local'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

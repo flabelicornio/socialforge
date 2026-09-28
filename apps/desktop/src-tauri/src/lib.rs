@@ -19,11 +19,18 @@ pub struct Post {
 }
 
 #[derive(Deserialize, Debug)]
+pub struct MediaItemInput {
+    pub url: String,
+    pub r#type: String,
+    pub name: String,
+}
+
+#[derive(Deserialize, Debug)]
 pub struct CreatePostInput {
     pub workspace_id: String,
     pub text: String,
     pub platforms: Vec<String>,
-    pub media_ids: Vec<String>,
+    pub media_ids: Vec<MediaItemInput>,
     pub scheduled_for: Option<i64>,
     pub link_url: Option<String>,
 }
@@ -33,7 +40,7 @@ pub struct UpdatePostInput {
     pub id: String,
     pub text: String,
     pub platforms: Vec<String>,
-    pub media_ids: Vec<String>,
+    pub media_ids: Vec<MediaItemInput>,
     pub scheduled_for: Option<i64>,
     pub link_url: Option<String>,
 }
@@ -47,15 +54,6 @@ fn get_app_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
         fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     }
     Ok(dir)
-}
-
-fn get_media_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
-    let app_dir = get_app_dir(app_handle)?;
-    let media_dir = app_dir.join("media");
-    if !media_dir.exists() {
-        fs::create_dir_all(&media_dir).map_err(|e| e.to_string())?;
-    }
-    Ok(media_dir)
 }
 
 fn load_posts_from_disk(app_handle: &tauri::AppHandle) -> Result<Vec<Post>, String> {
@@ -75,37 +73,6 @@ fn save_posts_to_disk(app_handle: &tauri::AppHandle, posts: &[Post]) -> Result<(
     let json = serde_json::to_string_pretty(posts).map_err(|e| e.to_string())?;
     fs::write(posts_file, json).map_err(|e| e.to_string())?;
     Ok(())
-}
-
-#[tauri::command]
-fn save_media_file(
-    app_handle: tauri::AppHandle,
-    file_name: String,
-    file_bytes: Vec<u8>,
-) -> Result<String, String> {
-    let media_dir = get_media_dir(&app_handle)?;
-    let file_id = format!("{}_{}", chrono::Utc::now().timestamp_millis(), file_name);
-    let target_path = media_dir.join(&file_id);
-
-    fs::write(target_path, file_bytes).map_err(|e| e.to_string())?;
-    Ok(file_id)
-}
-
-#[tauri::command]
-fn read_media_file(
-    app_handle: tauri::AppHandle,
-    file_name: String,
-) -> Result<Vec<u8>, String> {
-    let media_dir = get_media_dir(&app_handle)?;
-    let target_path = media_dir.join(&file_name);
-    let bytes = fs::read(target_path).map_err(|e| e.to_string())?;
-    Ok(bytes)
-}
-
-#[tauri::command]
-fn get_media_dir_cmd(app_handle: tauri::AppHandle) -> Result<String, String> {
-    let dir = get_media_dir(&app_handle)?;
-    Ok(dir.to_string_lossy().to_string())
 }
 
 #[tauri::command]
@@ -183,10 +150,7 @@ pub fn run() {
             create_post,
             update_post,
             list_posts,
-            delete_post,
-            save_media_file,
-            read_media_file,
-            get_media_dir_cmd
+            delete_post
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
