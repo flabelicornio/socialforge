@@ -15,10 +15,11 @@ interface Post {
   updatedAt: number;
 }
 
-interface MediaPreviewItem {
+interface MediaItem {
   url: string;
   type: 'image' | 'video';
   name: string;
+  isExisting?: boolean;
 }
 
 export default function App() {
@@ -26,16 +27,20 @@ export default function App() {
   const [loading, setLoading] = useState<boolean>(true);
   const [showModal, setShowModal] = useState<boolean>(false);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
-  
+
   const [text, setText] = useState<string>('');
   const [linkUrl, setLinkUrl] = useState<string>('');
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(['facebook', 'instagram']);
+  
+  // Archivos
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [filePreviews, setFilePreviews] = useState<MediaPreviewItem[]>([]);
+  const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
   const [existingMediaIds, setExistingMediaIds] = useState<string[]>([]);
   const [saving, setSaving] = useState<boolean>(false);
+  
+  // Vista Previa Modal
   const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor');
-  const [previewPlatform, setPreviewPlatform] = useState<string>('facebook');
+  const [currentMediaIndex, setCurrentMediaIndex] = useState<number>(0);
 
   const loadPosts = async (): Promise<void> => {
     try {
@@ -67,8 +72,9 @@ export default function App() {
     setLinkUrl('');
     setSelectedPlatforms(['facebook', 'instagram']);
     setSelectedFiles([]);
-    setFilePreviews([]);
+    setMediaItems([]);
     setExistingMediaIds([]);
+    setCurrentMediaIndex(0);
     setActiveTab('editor');
     setShowModal(true);
   };
@@ -78,9 +84,21 @@ export default function App() {
     setText(post.text);
     setLinkUrl(post.linkUrl || '');
     setSelectedPlatforms(parseJsonArray(post.platforms));
-    setExistingMediaIds(parseJsonArray(post.mediaIds));
+    
+    const savedMedia = parseJsonArray(post.mediaIds);
+    setExistingMediaIds(savedMedia);
     setSelectedFiles([]);
-    setFilePreviews([]);
+
+    // Representación de items existentes
+    const existingItems: MediaItem[] = savedMedia.map((id) => ({
+      url: '', // placeholder para guardados
+      type: id.match(/\.(mp4|mov|webm)$/i) ? 'video' : 'image',
+      name: id.split('_').slice(1).join('_') || id,
+      isExisting: true,
+    }));
+
+    setMediaItems(existingItems);
+    setCurrentMediaIndex(0);
     setActiveTab('editor');
     setShowModal(true);
   };
@@ -90,23 +108,30 @@ export default function App() {
       const filesArray = Array.from(e.target.files);
       setSelectedFiles((prev) => [...prev, ...filesArray]);
 
-      const newPreviews: MediaPreviewItem[] = filesArray.map((file) => ({
+      const newItems: MediaItem[] = filesArray.map((file) => ({
         url: URL.createObjectURL(file),
         type: file.type.startsWith('video/') ? 'video' : 'image',
         name: file.name,
+        isExisting: false,
       }));
 
-      setFilePreviews((prev) => [...prev, ...newPreviews]);
+      setMediaItems((prev) => [...prev, ...newItems]);
     }
   };
 
-  const removeNewFile = (index: number) => {
-    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
-    setFilePreviews((prev) => prev.filter((_, i) => i !== index));
-  };
+  const removeMediaItem = (index: number) => {
+    const itemToRemove = mediaItems[index];
+    setMediaItems((prev) => prev.filter((_, i) => i !== index));
 
-  const removeExistingMedia = (index: number) => {
-    setExistingMediaIds((prev) => prev.filter((_, i) => i !== index));
+    if (itemToRemove.isExisting) {
+      setExistingMediaIds((prev) => prev.filter((name) => !name.includes(itemToRemove.name)));
+    } else {
+      setSelectedFiles((prev) => prev.filter((f) => f.name !== itemToRemove.name));
+    }
+
+    if (currentMediaIndex >= mediaItems.length - 1) {
+      setCurrentMediaIndex(Math.max(0, mediaItems.length - 2));
+    }
   };
 
   const fileToByteArray = async (file: File): Promise<number[]> => {
@@ -240,7 +265,7 @@ export default function App() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <div style={{ flex: 1 }}>
                       <p style={{ margin: '0 0 0.5rem 0', fontSize: '1rem', whiteSpace: 'pre-wrap' }}>{post.text}</p>
-                      
+
                       {post.linkUrl && (
                         <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.85rem', color: '#0066cc' }}>
                           🔗 <a href={post.linkUrl} target="_blank" rel="noreferrer" style={{ color: '#0066cc' }}>{post.linkUrl}</a>
@@ -402,39 +427,6 @@ export default function App() {
                     Archivos Multimedia (Imágenes / Videos)
                   </label>
 
-                  {existingMediaIds.length > 0 && (
-                    <div style={{ marginBottom: '0.5rem' }}>
-                      <span style={{ fontSize: '0.75rem', color: '#666' }}>Archivos guardados en disco:</span>
-                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.2rem' }}>
-                        {existingMediaIds.map((mId, idx) => (
-                          <div
-                            key={idx}
-                            style={{
-                              fontSize: '0.75rem',
-                              backgroundColor: '#e2e8f0',
-                              padding: '0.3rem 0.6rem',
-                              borderRadius: '4px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '0.4rem',
-                            }}
-                          >
-                            <span style={{ maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              💾 {mId.split('_').slice(1).join('_') || mId}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => removeExistingMedia(idx)}
-                              style={{ border: 'none', background: 'none', color: '#e53e3e', cursor: 'pointer', fontWeight: 'bold' }}
-                            >
-                              ✕
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
                   <input
                     type="file"
                     multiple
@@ -443,14 +435,14 @@ export default function App() {
                     style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.85rem' }}
                   />
 
-                  {selectedFiles.length > 0 && (
+                  {mediaItems.length > 0 && (
                     <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
-                      {selectedFiles.map((file, idx) => (
+                      {mediaItems.map((item, idx) => (
                         <div
                           key={idx}
                           style={{
                             fontSize: '0.75rem',
-                            backgroundColor: '#f1f5f9',
+                            backgroundColor: item.isExisting ? '#e2e8f0' : '#f1f5f9',
                             padding: '0.3rem 0.6rem',
                             borderRadius: '4px',
                             display: 'flex',
@@ -458,10 +450,10 @@ export default function App() {
                             gap: '0.4rem',
                           }}
                         >
-                          <span>📎 {file.name}</span>
+                          <span>{item.isExisting ? '💾' : '📎'} {item.name}</span>
                           <button
                             type="button"
-                            onClick={() => removeNewFile(idx)}
+                            onClick={() => removeMediaItem(idx)}
                             style={{ border: 'none', background: 'none', color: '#e53e3e', cursor: 'pointer', fontWeight: 'bold' }}
                           >
                             ✕
@@ -538,127 +530,110 @@ export default function App() {
                 </div>
               </form>
             ) : (
-              <div>
-                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.5rem' }}>
-                  {['facebook', 'instagram', 'linkedin', 'x'].map((p) => (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => setPreviewPlatform(p)}
-                      style={{
-                        padding: '0.3rem 0.7rem',
-                        borderRadius: '4px',
-                        border: 'none',
-                        cursor: 'pointer',
-                        fontSize: '0.8rem',
-                        fontWeight: 'bold',
-                        textTransform: 'capitalize',
-                        backgroundColor: previewPlatform === p ? '#0066cc' : '#e2e8f0',
-                        color: previewPlatform === p ? '#fff' : '#333',
-                      }}
-                    >
+              <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '1.25rem', backgroundColor: '#fafafa' }}>
+                <p style={{ fontSize: '0.95rem', margin: '0 0 1rem 0', whiteSpace: 'pre-wrap' }}>{text || 'Sin texto introducido...'}</p>
+
+                {/* Carusel / Visor de Archivos */}
+                {mediaItems.length > 0 ? (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <div style={{ position: 'relative', width: '100%', height: '280px', backgroundColor: '#000', borderRadius: '8px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {mediaItems[currentMediaIndex].url ? (
+                        mediaItems[currentMediaIndex].type === 'image' ? (
+                          <img src={mediaItems[currentMediaIndex].url} alt="Preview" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                        ) : (
+                          <video src={mediaItems[currentMediaIndex].url} controls style={{ maxWidth: '100%', maxHeight: '100%' }} />
+                        )
+                      ) : (
+                        <div style={{ color: '#fff', textAlign: 'center', padding: '1rem' }}>
+                          📁 <strong>{mediaItems[currentMediaIndex].name}</strong>
+                          <p style={{ fontSize: '0.8rem', color: '#aaa', margin: '0.5rem 0 0 0' }}>(Archivo guardado en disco local)</p>
+                        </div>
+                      )}
+
+                      {/* Botones de navegación Anterior / Siguiente */}
+                      {mediaItems.length > 1 && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setCurrentMediaIndex((prev) => (prev > 0 ? prev - 1 : mediaItems.length - 1))}
+                            style={{
+                              position: 'absolute',
+                              left: '10px',
+                              backgroundColor: 'rgba(0,0,0,0.6)',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '50%',
+                              width: '32px',
+                              height: '32px',
+                              cursor: 'pointer',
+                              fontWeight: 'bold',
+                            }}
+                          >
+                            ◀
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCurrentMediaIndex((prev) => (prev < mediaItems.length - 1 ? prev + 1 : 0))}
+                            style={{
+                              position: 'absolute',
+                              right: '10px',
+                              backgroundColor: 'rgba(0,0,0,0.6)',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '50%',
+                              width: '32px',
+                              height: '32px',
+                              cursor: 'pointer',
+                              fontWeight: 'bold',
+                            }}
+                          >
+                            ▶
+                          </button>
+                        </>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', marginTop: '0.6rem' }}>
+                      {mediaItems.map((_, idx) => (
+                        <span
+                          key={idx}
+                          onClick={() => setCurrentMediaIndex(idx)}
+                          style={{
+                            width: '8px',
+                            height: '8px',
+                            borderRadius: '50%',
+                            backgroundColor: currentMediaIndex === idx ? '#0066cc' : '#ccc',
+                            cursor: 'pointer',
+                            display: 'inline-block',
+                          }}
+                        />
+                      ))}
+                      <span style={{ fontSize: '0.75rem', color: '#666', marginLeft: '0.5rem' }}>
+                        {currentMediaIndex + 1} de {mediaItems.length}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ border: '1px dashed #cbd5e1', padding: '1.5rem', textAlign: 'center', borderRadius: '6px', color: '#64748b', fontSize: '0.85rem', marginBottom: '1rem' }}>
+                    📷 No se han adjuntado fotos ni videos
+                  </div>
+                )}
+
+                {linkUrl && (
+                  <div style={{ border: '1px solid #cbd5e1', borderRadius: '6px', padding: '0.6rem', backgroundColor: '#fff', fontSize: '0.85rem', color: '#0066cc', marginBottom: '1rem' }}>
+                    🔗 <a href={linkUrl} target="_blank" rel="noreferrer" style={{ color: '#0066cc' }}>{linkUrl}</a>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '1.5rem' }}>
+                  {selectedPlatforms.map((p) => (
+                    <span key={p} style={{ fontSize: '0.7rem', backgroundColor: '#e2e8f0', padding: '0.2rem 0.5rem', borderRadius: '4px', textTransform: 'uppercase', fontWeight: 'bold', color: '#475569' }}>
                       {p}
-                    </button>
+                    </span>
                   ))}
                 </div>
 
-                {/* Feed Specific Cards */}
-                {previewPlatform === 'facebook' && (
-                  <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '1rem', backgroundColor: '#fff', boxShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.8rem' }}>
-                      <div style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: '#1877f2', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
-                        SF
-                      </div>
-                      <div>
-                        <strong style={{ display: 'block', fontSize: '0.9rem' }}>SocialForge LATAM</strong>
-                        <span style={{ fontSize: '0.75rem', color: '#65676b' }}>Hace un momento • 🌎</span>
-                      </div>
-                    </div>
-                    <p style={{ fontSize: '0.9rem', margin: '0 0 0.8rem 0', whiteSpace: 'pre-wrap' }}>{text || 'Escribe tu contenido...'}</p>
-                    {filePreviews.length > 0 && (
-                      <div style={{ borderRadius: '6px', overflow: 'hidden', marginBottom: '0.8rem', maxHeight: '280px', display: 'flex', justifyContent: 'center', backgroundColor: '#000' }}>
-                        {filePreviews[0].type === 'image' ? (
-                          <img src={filePreviews[0].url} alt="Media" style={{ maxWidth: '100%', maxHeight: '280px', objectFit: 'contain' }} />
-                        ) : (
-                          <video src={filePreviews[0].url} controls style={{ maxWidth: '100%', maxHeight: '280px' }} />
-                        )}
-                      </div>
-                    )}
-                    {linkUrl && (
-                      <div style={{ border: '1px solid #e4e6eb', borderRadius: '6px', padding: '0.6rem', backgroundColor: '#f0f2f5', fontSize: '0.8rem', color: '#1877f2' }}>
-                        🔗 {linkUrl}
-                      </div>
-                    )}
-                    <div style={{ borderTop: '1px solid #e4e6eb', marginTop: '0.8rem', paddingTop: '0.6rem', display: 'flex', justifyContent: 'space-around', fontSize: '0.8rem', color: '#65676b', fontWeight: 'bold' }}>
-                      <span>👍 Me gusta</span>
-                      <span>💬 Comentar</span>
-                      <span>↪️ Compartir</span>
-                    </div>
-                  </div>
-                )}
-
-                {previewPlatform === 'instagram' && (
-                  <div style={{ border: '1px solid #dbdbdb', borderRadius: '8px', backgroundColor: '#fff', overflow: 'hidden' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.6rem 0.8rem' }}>
-                      <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '0.8rem' }}>
-                        SF
-                      </div>
-                      <strong style={{ fontSize: '0.85rem' }}>socialforge_app</strong>
-                    </div>
-                    <div style={{ width: '100%', height: '260px', backgroundColor: '#fafafa', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderTop: '1px solid #efefef', borderBottom: '1px solid #efefef' }}>
-                      {filePreviews.length > 0 ? (
-                        filePreviews[0].type === 'image' ? (
-                          <img src={filePreviews[0].url} alt="Media" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        ) : (
-                          <video src={filePreviews[0].url} controls style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        )
-                      ) : (
-                        <span style={{ color: '#8e8e8e', fontSize: '0.85rem' }}>📷 Adjunta una imagen/video para Instagram</span>
-                      )}
-                    </div>
-                    <div style={{ padding: '0.8rem' }}>
-                      <div style={{ display: 'flex', gap: '0.8rem', marginBottom: '0.5rem', fontSize: '1.1rem' }}>
-                        <span>❤️</span>
-                        <span>💬</span>
-                        <span>✈️</span>
-                      </div>
-                      <p style={{ margin: 0, fontSize: '0.85rem', whiteSpace: 'pre-wrap' }}>
-                        <strong>socialforge_app</strong> {text || 'Pie de foto aquí...'}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {previewPlatform === 'linkedin' && (
-                  <div style={{ border: '1px solid #e0e0e0', borderRadius: '8px', padding: '1rem', backgroundColor: '#fff' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.8rem' }}>
-                      <div style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: '#0a66c2', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
-                        SF
-                      </div>
-                      <div>
-                        <strong style={{ display: 'block', fontSize: '0.85rem' }}>SocialForge Official</strong>
-                        <span style={{ fontSize: '0.7rem', color: '#666' }}>12,450 seguidores • Promocionado</span>
-                      </div>
-                    </div>
-                    <p style={{ fontSize: '0.85rem', margin: '0 0 0.8rem 0', whiteSpace: 'pre-wrap' }}>{text || 'Contenido profesional...'}</p>
-                    {filePreviews.length > 0 && (
-                      <div style={{ borderRadius: '4px', overflow: 'hidden', marginBottom: '0.8rem', maxHeight: '240px', display: 'flex', justifyContent: 'center', backgroundColor: '#000' }}>
-                        {filePreviews[0].type === 'image' ? (
-                          <img src={filePreviews[0].url} alt="Media" style={{ maxWidth: '100%', maxHeight: '240px', objectFit: 'contain' }} />
-                        ) : (
-                          <video src={filePreviews[0].url} controls style={{ maxWidth: '100%', maxHeight: '240px' }} />
-                        )}
-                      </div>
-                    )}
-                    <div style={{ borderTop: '1px solid #e0e0e0', marginTop: '0.8rem', paddingTop: '0.5rem', display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#666', fontWeight: '600' }}>
-                      <span>👍 Recomendar</span>
-                      <span>💬 Comentar</span>
-                      <span>🔁 Repostear</span>
-                    </div>
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                   <button
                     type="button"
                     onClick={() => setShowModal(false)}
