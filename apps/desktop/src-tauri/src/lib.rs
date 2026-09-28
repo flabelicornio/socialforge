@@ -1,20 +1,9 @@
-use rusqlite::{params, Connection, Result as SqliteResult};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use tauri::{AppHandle, Manager};
+use tauri::Manager;
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CreatePostInput {
-    pub workspace_id: String,
-    pub text: String,
-    pub platforms: Vec<String>,
-    pub media_ids: Vec<String>,
-    pub scheduled_for: Option<i64>,
-    pub link_url: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Post {
     pub id: String,
     pub workspace_id: String,
@@ -29,147 +18,176 @@ pub struct Post {
     pub updated_at: i64,
 }
 
-fn get_db_path(app: &AppHandle) -> PathBuf {
-    let app_dir = app
+#[derive(Deserialize, Debug)]
+pub struct CreatePostInput {
+    pub workspace_id: String,
+    pub text: String,
+    pub platforms: Vec<String>,
+    pub media_ids: Vec<String>,
+    pub scheduled_for: Option<i64>,
+    pub link_url: Option<String>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct UpdatePostInput {
+    pub id: String,
+    pub text: String,
+    pub platforms: Vec<String>,
+    pub media_ids: Vec<String>,
+    pub scheduled_for: Option<i64>,
+    pub link_url: Option<String>,
+}
+
+fn get_app_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let dir = app_handle
         .path()
         .app_data_dir()
-        .expect("No se pudo obtener el directorio de datos de la app");
-    fs::create_dir_all(&app_dir).ok();
-    app_dir.join("socialforge.db")
-}
-
-fn get_media_dir(app: &AppHandle) -> PathBuf {
-    let app_dir = app
-        .path()
-        .app_data_dir()
-        .expect("No se pudo obtener el directorio de datos de la app");
-    let media_dir = app_dir.join("media");
-    fs::create_dir_all(&media_dir).ok();
-    media_dir
-}
-
-fn init_db(app: &AppHandle) -> SqliteResult<()> {
-    let db_path = get_db_path(app);
-    let conn = Connection::open(db_path)?;
-
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS posts (
-            id TEXT PRIMARY KEY,
-            workspace_id TEXT NOT NULL,
-            text TEXT NOT NULL,
-            platforms TEXT NOT NULL,
-            media_ids TEXT NOT NULL,
-            scheduled_for INTEGER,
-            status TEXT NOT NULL,
-            failure_reason TEXT,
-            link_url TEXT,
-            created_at INTEGER NOT NULL,
-            updated_at INTEGER NOT NULL
-        )",
-        [],
-    )?;
-
-    Ok(())
-}
-
-#[tauri::command]
-fn create_post(app: AppHandle, input: CreatePostInput) -> Result<String, String> {
-    let db_path = get_db_path(&app);
-    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
-
-    let id = uuid::Uuid::new_v4().to_string();
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as i64;
-
-    let platforms_json = serde_json::to_string(&input.platforms).unwrap_or_default();
-    let media_ids_json = serde_json::to_string(&input.media_ids).unwrap_or_default();
-
-    conn.execute(
-        "INSERT INTO posts (id, workspace_id, text, platforms, media_ids, scheduled_for, status, failure_reason, link_url, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-        params![
-            id,
-            input.workspace_id,
-            input.text,
-            platforms_json,
-            media_ids_json,
-            input.scheduled_for,
-            "READY_FOR_USER",
-            None::<String>,
-            input.link_url,
-            now,
-            now
-        ],
-    ).map_err(|e| e.to_string())?;
-
-    Ok(id)
-}
-
-#[tauri::command]
-fn list_posts(app: AppHandle, workspace_id: String) -> Result<Vec<Post>, String> {
-    let db_path = get_db_path(&app);
-    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
-
-    let mut stmt = conn
-        .prepare("SELECT id, workspace_id, text, platforms, media_ids, scheduled_for, status, failure_reason, link_url, created_at, updated_at FROM posts WHERE workspace_id = ?1 ORDER BY created_at DESC")
         .map_err(|e| e.to_string())?;
+    if !dir.exists() {
+        fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    }
+    Ok(dir)
+}
 
-    let posts = stmt
-        .query_map(params![workspace_id], |row| {
-            Ok(Post {
-                id: row.get(0)?,
-                workspace_id: row.get(1)?,
-                text: row.get(2)?,
-                platforms: row.get(3)?,
-                media_ids: row.get(4)?,
-                scheduled_for: row.get(5)?,
-                status: row.get(6)?,
-                failure_reason: row.get(7)?,
-                link_url: row.get(8)?,
-                created_at: row.get(9)?,
-                updated_at: row.get(10)?,
-            })
-        })
-        .map_err(|e| e.to_string())?
-        .filter_map(Result::ok)
-        .collect();
+fn get_media_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let app_dir = get_app_dir(app_handle)?;
+    let media_dir = app_dir.join("media");
+    if !media_dir.exists() {
+        fs::create_dir_all(&media_dir).map_err(|e| e.to_string())?;
+    }
+    Ok(media_dir)
+}
 
+fn load_posts_from_disk(app_handle: &tauri::AppHandle) -> Result<Vec<Post>, String> {
+    let app_dir = get_app_dir(app_handle)?;
+    let posts_file = app_dir.join("posts.json");
+    if !posts_file.exists() {
+        return Ok(Vec::new());
+    }
+    let data = fs::read_to_string(posts_file).map_err(|e| e.to_string())?;
+    let posts: Vec<Post> = serde_json::from_str(&data).unwrap_or_default();
     Ok(posts)
 }
 
-#[tauri::command]
-fn delete_post(app: AppHandle, id: String) -> Result<(), String> {
-    let db_path = get_db_path(&app);
-    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
-
-    conn.execute("DELETE FROM posts WHERE id = ?1", params![id])
-        .map_err(|e| e.to_string())?;
-
+fn save_posts_to_disk(app_handle: &tauri::AppHandle, posts: &[Post]) -> Result<(), String> {
+    let app_dir = get_app_dir(app_handle)?;
+    let posts_file = app_dir.join("posts.json");
+    let json = serde_json::to_string_pretty(posts).map_err(|e| e.to_string())?;
+    fs::write(posts_file, json).map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
-fn save_media_file(app: AppHandle, file_name: String, file_bytes: Vec<u8>) -> Result<String, String> {
-    let media_dir = get_media_dir(&app);
-    let media_id = format!("{}_{}", uuid::Uuid::new_v4(), file_name);
-    let file_path = media_dir.join(&media_id);
+fn save_media_file(
+    app_handle: tauri::AppHandle,
+    file_name: String,
+    file_bytes: Vec<u8>,
+) -> Result<String, String> {
+    let media_dir = get_media_dir(&app_handle)?;
+    let file_id = format!("{}_{}", chrono::Utc::now().timestamp_millis(), file_name);
+    let target_path = media_dir.join(&file_id);
 
-    fs::write(&file_path, file_bytes).map_err(|e| e.to_string())?;
+    fs::write(target_path, file_bytes).map_err(|e| e.to_string())?;
+    Ok(file_id)
+}
 
-    Ok(media_id)
+#[tauri::command]
+fn read_media_file(
+    app_handle: tauri::AppHandle,
+    file_name: String,
+) -> Result<Vec<u8>, String> {
+    let media_dir = get_media_dir(&app_handle)?;
+    let target_path = media_dir.join(&file_name);
+    let bytes = fs::read(target_path).map_err(|e| e.to_string())?;
+    Ok(bytes)
+}
+
+#[tauri::command]
+fn get_media_dir_cmd(app_handle: tauri::AppHandle) -> Result<String, String> {
+    let dir = get_media_dir(&app_handle)?;
+    Ok(dir.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn create_post(app_handle: tauri::AppHandle, input: CreatePostInput) -> Result<Post, String> {
+    let mut posts = load_posts_from_disk(&app_handle)?;
+    let now = chrono::Utc::now().timestamp_millis();
+
+    let post = Post {
+        id: format!("post_{}", now),
+        workspace_id: input.workspace_id,
+        text: input.text,
+        platforms: serde_json::to_string(&input.platforms).unwrap_or_default(),
+        media_ids: serde_json::to_string(&input.media_ids).unwrap_or_default(),
+        scheduled_for: input.scheduled_for,
+        status: "draft".to_string(),
+        failure_reason: None,
+        link_url: input.link_url,
+        created_at: now,
+        updated_at: now,
+    };
+
+    posts.push(post.clone());
+    save_posts_to_disk(&app_handle, &posts)?;
+    Ok(post)
+}
+
+#[tauri::command]
+fn update_post(app_handle: tauri::AppHandle, input: UpdatePostInput) -> Result<Post, String> {
+    let mut posts = load_posts_from_disk(&app_handle)?;
+    let now = chrono::Utc::now().timestamp_millis();
+
+    let pos = posts
+        .iter()
+        .position(|p| p.id == input.id)
+        .ok_or_else(|| "Publicación no encontrada".to_string())?;
+
+    let existing = &posts[pos];
+    let updated_post = Post {
+        id: existing.id.clone(),
+        workspace_id: existing.workspace_id.clone(),
+        text: input.text,
+        platforms: serde_json::to_string(&input.platforms).unwrap_or_default(),
+        media_ids: serde_json::to_string(&input.media_ids).unwrap_or_default(),
+        scheduled_for: input.scheduled_for,
+        status: existing.status.clone(),
+        failure_reason: existing.failure_reason.clone(),
+        link_url: input.link_url,
+        created_at: existing.created_at,
+        updated_at: now,
+    };
+
+    posts[pos] = updated_post.clone();
+    save_posts_to_disk(&app_handle, &posts)?;
+    Ok(updated_post)
+}
+
+#[tauri::command]
+fn list_posts(app_handle: tauri::AppHandle, _workspace_id: String) -> Result<Vec<Post>, String> {
+    load_posts_from_disk(&app_handle)
+}
+
+#[tauri::command]
+fn delete_post(app_handle: tauri::AppHandle, id: String) -> Result<bool, String> {
+    let mut posts = load_posts_from_disk(&app_handle)?;
+    posts.retain(|p| p.id != id);
+    save_posts_to_disk(&app_handle, &posts)?;
+    Ok(true)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .setup(|app| {
-            init_db(app.handle())?;
-            Ok(())
-        })
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![create_post, list_posts, delete_post, save_media_file])
+        .invoke_handler(tauri::generate_handler![
+            create_post,
+            update_post,
+            list_posts,
+            delete_post,
+            save_media_file,
+            read_media_file,
+            get_media_dir_cmd
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

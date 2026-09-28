@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { convertFileSrc } from '@tauri-apps/api/core';
 
 interface Post {
   id: string;
@@ -38,7 +37,6 @@ export default function App() {
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
   const [existingMediaIds, setExistingMediaIds] = useState<string[]>([]);
   const [saving, setSaving] = useState<boolean>(false);
-  const [mediaDir, setMediaDir] = useState<string>('');
   
   // Vista Previa Modal
   const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor');
@@ -49,10 +47,6 @@ export default function App() {
       setLoading(true);
       const res = await invoke<Post[]>('list_posts', { workspaceId: 'default' });
       setPosts(res);
-      
-      // Obtener el directorio de medios
-      const dir = await invoke<string>('get_media_dir');
-      setMediaDir(dir);
     } catch (err) {
       console.error('Error al listar posts:', err);
     } finally {
@@ -85,7 +79,21 @@ export default function App() {
     setShowModal(true);
   };
 
-  const openEditModal = (post: Post) => {
+  // Convertir bytes recibidos de Rust a Blob URL
+  const loadExistingMediaUrl = async (mediaId: string): Promise<string> => {
+    try {
+      const bytes = await invoke<number[]>('read_media_file', { fileName: mediaId });
+      const isVideo = mediaId.match(/\.(mp4|mov|webm)$/i);
+      const mimeType = isVideo ? 'video/mp4' : 'image/jpeg';
+      const blob = new Blob([new Uint8Array(bytes)], { type: mimeType });
+      return URL.createObjectURL(blob);
+    } catch (err) {
+      console.error('Error al leer archivo multimedia local:', err);
+      return '';
+    }
+  };
+
+  const openEditModal = async (post: Post) => {
     setEditingPostId(post.id);
     setText(post.text);
     setLinkUrl(post.linkUrl || '');
@@ -95,23 +103,21 @@ export default function App() {
     setExistingMediaIds(savedMedia);
     setSelectedFiles([]);
 
-    // Convertir IDs existentes a URLs locales reproducibles
-    const existingItems: MediaItem[] = savedMedia.map((id) => {
-      const isVid = id.match(/\.(mp4|mov|webm)$/i) !== null;
-      let fullUrl = '';
-      if (mediaDir) {
-        const filePath = `${mediaDir}\\${id}`;
-        fullUrl = convertFileSrc(filePath);
-      }
-      return {
-        url: fullUrl,
-        type: isVid ? 'video' : 'image',
-        name: id.split('_').slice(1).join('_') || id,
-        isExisting: true,
-      };
-    });
+    // Cargar URLs binarias locales
+    const loadedItems: MediaItem[] = await Promise.all(
+      savedMedia.map(async (id) => {
+        const isVid = id.match(/\.(mp4|mov|webm)$/i) !== null;
+        const objectUrl = await loadExistingMediaUrl(id);
+        return {
+          url: objectUrl,
+          type: isVid ? 'video' : 'image',
+          name: id.split('_').slice(1).join('_') || id,
+          isExisting: true,
+        };
+      })
+    );
 
-    setMediaItems(existingItems);
+    setMediaItems(loadedItems);
     setCurrentMediaIndex(0);
     setActiveTab('editor');
     setShowModal(true);
@@ -153,8 +159,8 @@ export default function App() {
     return Array.from(new Uint8Array(arrayBuffer));
   };
 
-  const handleSavePost = async (e: React.FormEvent<HTMLFormElement>): Promise<void> => {
-    e.preventDefault();
+  const handleSavePost = async (e?: React.FormEvent<HTMLFormElement>): Promise<void> => {
+    if (e) e.preventDefault();
     if (!text.trim()) return;
 
     try {
@@ -656,13 +662,29 @@ export default function App() {
                   * Nota: La publicación puede verse diferente o variar un poco de acuerdo a cada red social.
                 </p>
 
-                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
                   <button
                     type="button"
                     onClick={() => setShowModal(false)}
                     style={{ padding: '0.5rem 1rem', borderRadius: '4px', border: '1px solid #ccc', backgroundColor: '#fff', cursor: 'pointer' }}
                   >
                     Cerrar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSavePost()}
+                    disabled={saving}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      borderRadius: '4px',
+                      border: 'none',
+                      backgroundColor: '#0066cc',
+                      color: 'white',
+                      cursor: 'pointer',
+                      fontWeight: 'bold',
+                    }}
+                  >
+                    {saving ? 'Guardando...' : editingPostId ? 'Actualizar' : 'Guardar en Local'}
                   </button>
                 </div>
               </div>
