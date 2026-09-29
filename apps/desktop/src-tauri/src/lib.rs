@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use tauri::Manager;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Post {
     pub id: String,
     pub workspace_id: String,
@@ -19,6 +20,7 @@ pub struct Post {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct MediaItemInput {
     pub url: String,
     pub r#type: String,
@@ -26,6 +28,7 @@ pub struct MediaItemInput {
 }
 
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct CreatePostInput {
     pub workspace_id: String,
     pub text: String,
@@ -36,6 +39,7 @@ pub struct CreatePostInput {
 }
 
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdatePostInput {
     pub id: String,
     pub text: String,
