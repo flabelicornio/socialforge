@@ -29,6 +29,7 @@ export function App() {
 
   const [text, setText] = useState<string>('');
   const [linkUrl, setLinkUrl] = useState<string>('');
+  const [scheduledFor, setScheduledFor] = useState<string>('');
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(['facebook', 'instagram']);
   
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
@@ -61,10 +62,20 @@ export function App() {
     }
   };
 
+  // Helper para formatear timestamp a input HTML datetime-local
+  const timestampToDatetimeLocal = (timestamp?: number | null): string => {
+    if (!timestamp) return '';
+    const date = new Date(timestamp);
+    const tzOffset = date.getTimezoneOffset() * 60000;
+    const localISOTime = new Date(date.getTime() - tzOffset).toISOString().slice(0, 16);
+    return localISOTime;
+  };
+
   const openCreateModal = () => {
     setEditingPostId(null);
     setText('');
     setLinkUrl('');
+    setScheduledFor('');
     setSelectedPlatforms(['facebook', 'instagram']);
     setMediaItems([]);
     setCurrentMediaIndex(0);
@@ -76,6 +87,7 @@ export function App() {
     setEditingPostId(post.id);
     setText(post.text);
     setLinkUrl(post.linkUrl || '');
+    setScheduledFor(timestampToDatetimeLocal(post.scheduledFor));
     setSelectedPlatforms(parseJsonArray(post.platforms));
     setMediaItems([]);
     setCurrentMediaIndex(0);
@@ -124,12 +136,14 @@ export function App() {
     try {
       setSaving(true);
 
+      const scheduledTimestamp = scheduledFor ? new Date(scheduledFor).getTime() : null;
+
       const payload = {
         workspaceId: 'default',
         text: text,
         platforms: JSON.stringify(selectedPlatforms),
         mediaIds: JSON.stringify([]),
-        scheduledFor: null,
+        scheduledFor: scheduledTimestamp,
         linkUrl: linkUrl.trim() ? linkUrl.trim() : null,
       };
 
@@ -254,9 +268,16 @@ export function App() {
                         ))}
                       </div>
 
-                      <span style={{ fontSize: '0.75rem', color: '#888' }}>
-                        Estado: <strong>{post.status}</strong> • Creado: {new Date(post.createdAt).toLocaleString()}
-                      </span>
+                      <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.4rem', display: 'flex', gap: '1rem' }}>
+                        <span>Status: <strong style={{ textTransform: 'capitalize', color: '#334155' }}>{post.status}</strong></span>
+                        {post.scheduledFor ? (
+                          <span style={{ color: '#0284c7', fontWeight: '600' }}>
+                            📅 Programado: {new Date(post.scheduledFor).toLocaleString()}
+                          </span>
+                        ) : (
+                          <span style={{ color: '#a1a1aa' }}>📅 Sin fecha programada</span>
+                        )}
+                      </div>
                     </div>
 
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -329,9 +350,8 @@ export function App() {
             }}
           >
             <div>
-              {/* Aviso para el usuario */}
               <div style={{ backgroundColor: '#fffbe3', border: '1px solid #ffe58f', borderRadius: '6px', padding: '0.6rem 0.8rem', marginBottom: '1rem', fontSize: '0.8rem', color: '#856404' }}>
-                🔒 <strong>Seguridad y Privacidad:</strong> La vista previa multimedia solo está disponible de forma activa durante la preparación del borrador. Asegúrate de verificar las imágenes/videos antes de guardar la publicación.
+                🔒 <strong>Seguridad y Privacidad:</strong> La vista previa multimedia solo está disponible durante la preparación del borrador. Verifica tus archivos adjuntos antes de guardar.
               </div>
 
               {activeTab === 'editor' ? (
@@ -347,6 +367,18 @@ export function App() {
                       rows={4}
                       style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', boxSizing: 'border-box' }}
                       required
+                    />
+                  </div>
+
+                  <div style={{ marginBottom: '1rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.3rem' }}>
+                      📅 Fecha y hora de publicación (opcional)
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={scheduledFor}
+                      onChange={(e) => setScheduledFor(e.target.value)}
+                      style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', boxSizing: 'border-box' }}
                     />
                   </div>
 
@@ -435,6 +467,12 @@ export function App() {
               ) : (
                 <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '1.25rem', backgroundColor: '#fafafa' }}>
                   <p style={{ fontSize: '0.95rem', margin: '0 0 1rem 0', whiteSpace: 'pre-wrap' }}>{text || 'Sin texto introducido...'}</p>
+
+                  {scheduledFor && (
+                    <div style={{ marginBottom: '1rem', fontSize: '0.85rem', color: '#0284c7', fontWeight: 'bold' }}>
+                      📅 Programado para: {new Date(scheduledFor).toLocaleString()}
+                    </div>
+                  )}
 
                   {mediaItems.length > 0 ? (
                     <div style={{ marginBottom: '1rem' }}>
