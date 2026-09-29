@@ -77,9 +77,7 @@ export function App() {
     setText(post.text);
     setLinkUrl(post.linkUrl || '');
     setSelectedPlatforms(parseJsonArray(post.platforms));
-    
-    const savedMedia: MediaItem[] = parseJsonArray(post.mediaIds);
-    setMediaItems(savedMedia);
+    setMediaItems([]);
     setCurrentMediaIndex(0);
     setActiveTab('editor');
     setShowModal(true);
@@ -129,22 +127,22 @@ export function App() {
       const payload = {
         workspaceId: 'default',
         text: text,
-        platforms: selectedPlatforms,
-        mediaIds: mediaItems,
+        platforms: JSON.stringify(selectedPlatforms),
+        mediaIds: JSON.stringify([]),
         scheduledFor: null,
         linkUrl: linkUrl.trim() ? linkUrl.trim() : null,
       };
 
       if (editingPostId) {
         await invoke('update_post', {
-          inputJson: JSON.stringify({
+          input: {
             id: editingPostId,
             ...payload,
-          }),
+          },
         });
       } else {
         await invoke('create_post', {
-          inputJson: JSON.stringify(payload),
+          input: payload,
         });
       }
 
@@ -214,7 +212,6 @@ export function App() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {posts.map((post) => {
-              const mediaList = parseJsonArray(post.mediaIds);
               const platformList = parseJsonArray(post.platforms);
 
               return (
@@ -235,12 +232,6 @@ export function App() {
                       {post.linkUrl && (
                         <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.85rem', color: '#0066cc' }}>
                           🔗 <a href={post.linkUrl} target="_blank" rel="noreferrer" style={{ color: '#0066cc' }}>{post.linkUrl}</a>
-                        </p>
-                      )}
-
-                      {mediaList.length > 0 && (
-                        <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.85rem', color: '#4a5568' }}>
-                          📁 <strong>Archivos adjuntos:</strong> {mediaList.length} archivo(s)
                         </p>
                       )}
 
@@ -338,6 +329,11 @@ export function App() {
             }}
           >
             <div>
+              {/* Aviso para el usuario */}
+              <div style={{ backgroundColor: '#fffbe3', border: '1px solid #ffe58f', borderRadius: '6px', padding: '0.6rem 0.8rem', marginBottom: '1rem', fontSize: '0.8rem', color: '#856404' }}>
+                🔒 <strong>Seguridad y Privacidad:</strong> La vista previa multimedia solo está disponible de forma activa durante la preparación del borrador. Asegúrate de verificar las imágenes/videos antes de guardar la publicación.
+              </div>
+
               {activeTab === 'editor' ? (
                 <form id="post-form" onSubmit={handleSavePost}>
                   <div style={{ marginBottom: '1rem' }}>
@@ -535,10 +531,6 @@ export function App() {
                       ))}
                     </div>
                   </div>
-
-                  <p style={{ fontSize: '0.75rem', color: '#94a3b8', fontStyle: 'italic', margin: '0.5rem 0 0 0' }}>
-                    * Nota: La publicación puede verse diferente o variar un poco de acuerdo a cada red social.
-                  </p>
                 </div>
               )}
             </div>
