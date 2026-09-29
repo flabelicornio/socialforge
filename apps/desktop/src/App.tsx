@@ -5,8 +5,8 @@ interface Post {
   id: string;
   workspaceId: string;
   text: string;
-  platforms: string;
-  mediaIds: string;
+  platforms: string | string[];
+  mediaIds: string | string[];
   scheduledFor?: number | null;
   status: string;
   failureReason?: string | null;
@@ -54,15 +54,15 @@ export function App() {
     loadPosts();
   }, []);
 
-  const parseJsonArray = (jsonString: string): any[] => {
+  const parsePlatforms = (platformsData: string | string[]): string[] => {
+    if (Array.isArray(platformsData)) return platformsData;
     try {
-      return JSON.parse(jsonString) || [];
+      return JSON.parse(platformsData) || [];
     } catch {
       return [];
     }
   };
 
-  // Helper para formatear timestamp a input HTML datetime-local
   const timestampToDatetimeLocal = (timestamp?: number | null): string => {
     if (!timestamp) return '';
     const date = new Date(timestamp);
@@ -88,7 +88,7 @@ export function App() {
     setText(post.text);
     setLinkUrl(post.linkUrl || '');
     setScheduledFor(timestampToDatetimeLocal(post.scheduledFor));
-    setSelectedPlatforms(parseJsonArray(post.platforms));
+    setSelectedPlatforms(parsePlatforms(post.platforms));
     setMediaItems([]);
     setCurrentMediaIndex(0);
     setActiveTab('editor');
@@ -141,8 +141,8 @@ export function App() {
       const payload = {
         workspaceId: 'default',
         text: text,
-        platforms: JSON.stringify(selectedPlatforms),
-        mediaIds: JSON.stringify([]),
+        platforms: selectedPlatforms, // Enviamos el array directo
+        mediaIds: [],                // Enviamos el array directo
         scheduledFor: scheduledTimestamp,
         linkUrl: linkUrl.trim() ? linkUrl.trim() : null,
       };
@@ -226,7 +226,7 @@ export function App() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {posts.map((post) => {
-              const platformList = parseJsonArray(post.platforms);
+              const platformList = parsePlatforms(post.platforms);
 
               return (
                 <div
