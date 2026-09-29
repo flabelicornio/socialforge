@@ -27,7 +27,7 @@ pub struct MediaItemInput {
     pub name: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct CreatePostInput {
     pub workspace_id: String,
@@ -38,10 +38,11 @@ pub struct CreatePostInput {
     pub link_url: Option<String>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdatePostInput {
     pub id: String,
+    pub workspace_id: String,
     pub text: String,
     pub platforms: Vec<String>,
     pub media_ids: Vec<MediaItemInput>,
@@ -116,7 +117,7 @@ fn update_post(app_handle: tauri::AppHandle, input: UpdatePostInput) -> Result<P
     let existing = &posts[pos];
     let updated_post = Post {
         id: existing.id.clone(),
-        workspace_id: existing.workspace_id.clone(),
+        workspace_id: input.workspace_id,
         text: input.text,
         platforms: serde_json::to_string(&input.platforms).unwrap_or_default(),
         media_ids: serde_json::to_string(&input.media_ids).unwrap_or_default(),

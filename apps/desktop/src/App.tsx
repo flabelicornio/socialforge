@@ -31,11 +31,9 @@ export default function App() {
   const [linkUrl, setLinkUrl] = useState<string>('');
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(['facebook', 'instagram']);
   
-  // Archivos multimedia (Manejados en Base64 para carga instantánea)
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
   const [saving, setSaving] = useState<boolean>(false);
   
-  // Vista Previa Modal
   const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor');
   const [currentMediaIndex, setCurrentMediaIndex] = useState<number>(0);
 
@@ -80,7 +78,6 @@ export default function App() {
     setLinkUrl(post.linkUrl || '');
     setSelectedPlatforms(parseJsonArray(post.platforms));
     
-    // Cargar media directamente desde Base64 guardado
     const savedMedia: MediaItem[] = parseJsonArray(post.mediaIds);
     setMediaItems(savedMedia);
     setCurrentMediaIndex(0);
@@ -129,27 +126,25 @@ export default function App() {
     try {
       setSaving(true);
 
+      const payload = {
+        workspaceId: 'default',
+        text: text,
+        platforms: selectedPlatforms,
+        mediaIds: mediaItems,
+        scheduledFor: null,
+        linkUrl: linkUrl.trim() ? linkUrl.trim() : null,
+      };
+
       if (editingPostId) {
         await invoke('update_post', {
           input: {
             id: editingPostId,
-            text: text,
-            platforms: selectedPlatforms,
-            mediaIds: mediaItems, // Guardamos los objetos Base64
-            scheduledFor: null,
-            linkUrl: linkUrl.trim() ? linkUrl.trim() : null,
+            ...payload,
           },
         });
       } else {
         await invoke('create_post', {
-          input: {
-            workspaceId: 'default',
-            text: text,
-            platforms: selectedPlatforms,
-            mediaIds: mediaItems, // Guardamos los objetos Base64
-            scheduledFor: null,
-            linkUrl: linkUrl.trim() ? linkUrl.trim() : null,
-          },
+          input: payload,
         });
       }
 
@@ -342,7 +337,6 @@ export default function App() {
               justify: 'space-between',
             }}
           >
-            {/* Contenido según Pestaña */}
             <div>
               {activeTab === 'editor' ? (
                 <form id="post-form" onSubmit={handleSavePost}>
@@ -446,7 +440,6 @@ export default function App() {
                 <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '1.25rem', backgroundColor: '#fafafa' }}>
                   <p style={{ fontSize: '0.95rem', margin: '0 0 1rem 0', whiteSpace: 'pre-wrap' }}>{text || 'Sin texto introducido...'}</p>
 
-                  {/* Visor de Galería */}
                   {mediaItems.length > 0 ? (
                     <div style={{ marginBottom: '1rem' }}>
                       <div style={{ position: 'relative', width: '100%', height: '280px', backgroundColor: '#000', borderRadius: '8px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -456,7 +449,6 @@ export default function App() {
                           <video src={mediaItems[currentMediaIndex].url} controls style={{ maxWidth: '100%', maxHeight: '100%' }} />
                         )}
 
-                        {/* Navegación Anterior / Siguiente */}
                         {mediaItems.length > 1 && (
                           <>
                             <button
@@ -551,7 +543,6 @@ export default function App() {
               )}
             </div>
 
-            {/* SECCIÓN INFERIOR AGRUPADA (Título, Conmutador Editor/Preview, Botones de Acción) */}
             <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '1rem', marginTop: '1.25rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                 <h3 style={{ margin: 0, fontSize: '1.1rem' }}>
