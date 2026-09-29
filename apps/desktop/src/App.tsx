@@ -54,13 +54,42 @@ export function App() {
     loadPosts();
   }, []);
 
-  const parseJsonData = (data: string | string[]): any[] => {
-    if (Array.isArray(data)) return data;
+  const parsePlatforms = (platformsData: string | string[]): string[] => {
+    if (Array.isArray(platformsData)) return platformsData;
     try {
-      return JSON.parse(data) || [];
+      return JSON.parse(platformsData) || [];
     } catch {
       return [];
     }
+  };
+
+  const parseMediaItems = (mediaData: string | string[]): MediaItem[] => {
+    if (!mediaData) return [];
+    
+    // Si viene como Array desde Rust/JS
+    if (Array.isArray(mediaData)) {
+      return mediaData.map((item) => {
+        if (typeof item === 'string') {
+          try {
+            return JSON.parse(item);
+          } catch {
+            return null;
+          }
+        }
+        return item;
+      }).filter(Boolean);
+    }
+
+    // Si viene como String JSON
+    try {
+      const parsed = JSON.parse(mediaData);
+      if (Array.isArray(parsed)) {
+        return parsed.map((item) => (typeof item === 'string' ? JSON.parse(item) : item)).filter(Boolean);
+      }
+    } catch {
+      return [];
+    }
+    return [];
   };
 
   const timestampToDatetimeLocal = (timestamp?: number | null): string => {
@@ -87,15 +116,11 @@ export function App() {
     setText(post.text);
     setLinkUrl(post.linkUrl || '');
     setScheduledFor(timestampToDatetimeLocal(post.scheduledFor));
-    setSelectedPlatforms(parseJsonData(post.platforms));
+    setSelectedPlatforms(parsePlatforms(post.platforms));
 
-    // Reconstruir la lista de adjuntos guardados previamente
-    const savedMedia = parseJsonData(post.mediaIds);
-    if (savedMedia.length > 0 && typeof savedMedia[0] === 'object') {
-      setMediaItems(savedMedia);
-    } else {
-      setMediaItems([]);
-    }
+    // Recuperación robusta de adjuntos
+    const loadedMedia = parseMediaItems(post.mediaIds);
+    setMediaItems(loadedMedia);
 
     setCurrentMediaIndex(0);
     setActiveTab('editor');
@@ -144,9 +169,7 @@ export function App() {
       setSaving(true);
 
       const scheduledTimestamp = scheduledFor ? new Date(scheduledFor).getTime() : null;
-
-      // Serializamos los items multimedia para que la base de datos almacene sus referencias/dataURLs
-      const mediaPayload = mediaItems.map(item => JSON.stringify(item));
+      const mediaPayload = mediaItems.map((item) => JSON.stringify(item));
 
       const payload = {
         workspaceId: 'default',
@@ -236,8 +259,8 @@ export function App() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {posts.map((post) => {
-              const platformList = parseJsonData(post.platforms);
-              const savedMedia = parseJsonData(post.mediaIds);
+              const platformList = parsePlatforms(post.platforms);
+              const savedMedia = parseMediaItems(post.mediaIds);
 
               return (
                 <div
@@ -338,6 +361,7 @@ export function App() {
 
       {showModal && (
         <div
+          onClick={() => setShowModal(false)} // Cierre al hacer clic en el fondo oscuro
           style={{
             position: 'fixed',
             top: 0,
@@ -352,6 +376,7 @@ export function App() {
           }}
         >
           <div
+            onClick={(e) => e.stopPropagation()} // Previene que el clic dentro del modal lo cierre
             style={{
               backgroundColor: 'white',
               borderRadius: '8px',
@@ -385,14 +410,26 @@ export function App() {
 
                   <div style={{ marginBottom: '1rem' }}>
                     <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.3rem' }}>
-                      📅 Fecha y hora de publicación (opcional)
+                      Fecha y hora de publicación (opcional)
                     </label>
-                    <input
-                      type="datetime-local"
-                      value={scheduledFor}
-                      onChange={(e) => setScheduledFor(e.target.value)}
-                      style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', boxSizing: 'border-box' }}
-                    />
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                      <span style={{ position: 'absolute', left: '10px', pointerEvents: 'none', fontSize: '1rem' }}>
+                        📅
+                      </span>
+                      <input
+                        type="datetime-local"
+                        value={scheduledFor}
+                        onChange={(e) => setScheduledFor(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '0.5rem 0.5rem 0.5rem 2.2rem',
+                          borderRadius: '4px',
+                          border: '1px solid #ccc',
+                          boxSizing: 'border-box',
+                          fontSize: '0.9rem',
+                        }}
+                      />
+                    </div>
                   </div>
 
                   <div style={{ marginBottom: '1rem' }}>
