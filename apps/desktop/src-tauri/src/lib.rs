@@ -18,7 +18,7 @@ pub struct Post {
     pub updated_at: i64,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct MediaItemInput {
     pub url: String,
     pub r#type: String,
