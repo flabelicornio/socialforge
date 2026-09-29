@@ -81,7 +81,10 @@ fn save_posts_to_disk(app_handle: &tauri::AppHandle, posts: &[Post]) -> Result<(
 }
 
 #[tauri::command]
-fn create_post(app_handle: tauri::AppHandle, input: CreatePostInput) -> Result<Post, String> {
+fn create_post(app_handle: tauri::AppHandle, input_json: String) -> Result<Post, String> {
+    let input: CreatePostInput = serde_json::from_str(&input_json)
+        .map_err(|e| format!("Error al parsear payload JSON: {}", e))?;
+
     let mut posts = load_posts_from_disk(&app_handle)?;
     let now = chrono::Utc::now().timestamp_millis();
 
@@ -105,7 +108,10 @@ fn create_post(app_handle: tauri::AppHandle, input: CreatePostInput) -> Result<P
 }
 
 #[tauri::command]
-fn update_post(app_handle: tauri::AppHandle, input: UpdatePostInput) -> Result<Post, String> {
+fn update_post(app_handle: tauri::AppHandle, input_json: String) -> Result<Post, String> {
+    let input: UpdatePostInput = serde_json::from_str(&input_json)
+        .map_err(|e| format!("Error al parsear payload JSON: {}", e))?;
+
     let mut posts = load_posts_from_disk(&app_handle)?;
     let now = chrono::Utc::now().timestamp_millis();
 
