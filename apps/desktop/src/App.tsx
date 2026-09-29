@@ -54,10 +54,10 @@ export function App() {
     loadPosts();
   }, []);
 
-  const parsePlatforms = (platformsData: string | string[]): string[] => {
-    if (Array.isArray(platformsData)) return platformsData;
+  const parseJsonData = (data: string | string[]): any[] => {
+    if (Array.isArray(data)) return data;
     try {
-      return JSON.parse(platformsData) || [];
+      return JSON.parse(data) || [];
     } catch {
       return [];
     }
@@ -67,8 +67,7 @@ export function App() {
     if (!timestamp) return '';
     const date = new Date(timestamp);
     const tzOffset = date.getTimezoneOffset() * 60000;
-    const localISOTime = new Date(date.getTime() - tzOffset).toISOString().slice(0, 16);
-    return localISOTime;
+    return new Date(date.getTime() - tzOffset).toISOString().slice(0, 16);
   };
 
   const openCreateModal = () => {
@@ -88,8 +87,16 @@ export function App() {
     setText(post.text);
     setLinkUrl(post.linkUrl || '');
     setScheduledFor(timestampToDatetimeLocal(post.scheduledFor));
-    setSelectedPlatforms(parsePlatforms(post.platforms));
-    setMediaItems([]);
+    setSelectedPlatforms(parseJsonData(post.platforms));
+
+    // Reconstruir la lista de adjuntos guardados previamente
+    const savedMedia = parseJsonData(post.mediaIds);
+    if (savedMedia.length > 0 && typeof savedMedia[0] === 'object') {
+      setMediaItems(savedMedia);
+    } else {
+      setMediaItems([]);
+    }
+
     setCurrentMediaIndex(0);
     setActiveTab('editor');
     setShowModal(true);
@@ -138,11 +145,14 @@ export function App() {
 
       const scheduledTimestamp = scheduledFor ? new Date(scheduledFor).getTime() : null;
 
+      // Serializamos los items multimedia para que la base de datos almacene sus referencias/dataURLs
+      const mediaPayload = mediaItems.map(item => JSON.stringify(item));
+
       const payload = {
         workspaceId: 'default',
         text: text,
-        platforms: selectedPlatforms, // Enviamos el array directo
-        mediaIds: [],                // Enviamos el array directo
+        platforms: selectedPlatforms,
+        mediaIds: mediaPayload,
         scheduledFor: scheduledTimestamp,
         linkUrl: linkUrl.trim() ? linkUrl.trim() : null,
       };
@@ -226,7 +236,8 @@ export function App() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {posts.map((post) => {
-              const platformList = parsePlatforms(post.platforms);
+              const platformList = parseJsonData(post.platforms);
+              const savedMedia = parseJsonData(post.mediaIds);
 
               return (
                 <div
@@ -242,6 +253,12 @@ export function App() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <div style={{ flex: 1 }}>
                       <p style={{ margin: '0 0 0.5rem 0', fontSize: '1rem', whiteSpace: 'pre-wrap' }}>{post.text}</p>
+
+                      {savedMedia.length > 0 && (
+                        <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.85rem', color: '#475569', fontWeight: '500' }}>
+                          📎 {savedMedia.length} archivo(s) multimedia adjunto(s)
+                        </p>
+                      )}
 
                       {post.linkUrl && (
                         <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.85rem', color: '#0066cc' }}>
@@ -350,10 +367,6 @@ export function App() {
             }}
           >
             <div>
-              <div style={{ backgroundColor: '#fffbe3', border: '1px solid #ffe58f', borderRadius: '6px', padding: '0.6rem 0.8rem', marginBottom: '1rem', fontSize: '0.8rem', color: '#856404' }}>
-                🔒 <strong>Seguridad y Privacidad:</strong> La vista previa multimedia solo está disponible durante la preparación del borrador. Verifica tus archivos adjuntos antes de guardar.
-              </div>
-
               {activeTab === 'editor' ? (
                 <form id="post-form" onSubmit={handleSavePost}>
                   <div style={{ marginBottom: '1rem' }}>
