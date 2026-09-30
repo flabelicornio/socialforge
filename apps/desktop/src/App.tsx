@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 
 interface Post {
@@ -38,8 +38,6 @@ export function App() {
   const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor');
   const [currentMediaIndex, setCurrentMediaIndex] = useState<number>(0);
 
-  const dateInputRef = useRef<HTMLInputElement | null>(null);
-
   const loadPosts = async (): Promise<void> => {
     try {
       setLoading(true);
@@ -68,6 +66,7 @@ export function App() {
   const parseMediaItems = (mediaData: string | string[]): MediaItem[] => {
     if (!mediaData) return [];
     
+    // Si viene como Array desde Rust/JS
     if (Array.isArray(mediaData)) {
       return mediaData.map((item) => {
         if (typeof item === 'string') {
@@ -81,6 +80,7 @@ export function App() {
       }).filter(Boolean);
     }
 
+    // Si viene como String JSON
     try {
       const parsed = JSON.parse(mediaData);
       if (Array.isArray(parsed)) {
@@ -118,6 +118,7 @@ export function App() {
     setScheduledFor(timestampToDatetimeLocal(post.scheduledFor));
     setSelectedPlatforms(parsePlatforms(post.platforms));
 
+    // Recuperación robusta de adjuntos
     const loadedMedia = parseMediaItems(post.mediaIds);
     setMediaItems(loadedMedia);
 
@@ -219,26 +220,8 @@ export function App() {
     }
   };
 
-  const handleOpenDatePicker = () => {
-    if (dateInputRef.current) {
-      if ('showPicker' in dateInputRef.current) {
-        (dateInputRef.current as any).showPicker();
-      } else {
-        dateInputRef.current.focus();
-      }
-    }
-  };
-
   return (
     <div style={{ maxWidth: '820px', margin: '0 auto', padding: '2rem', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
-      {/* Estilo global para ocultar el icono duplicado predeterminado de Chrome/WebView */}
-      <style>{`
-        input[type="datetime-local"]::-webkit-calendar-picker-indicator {
-          display: none;
-          -webkit-appearance: none;
-        }
-      `}</style>
-
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <div>
           <h1 style={{ margin: 0, fontSize: '1.8rem', fontWeight: 'bold' }}>SocialForge</h1>
@@ -378,7 +361,7 @@ export function App() {
 
       {showModal && (
         <div
-          onClick={() => setShowModal(false)}
+          onClick={() => setShowModal(false)} // Cierre al hacer clic en el fondo oscuro
           style={{
             position: 'fixed',
             top: 0,
@@ -393,7 +376,7 @@ export function App() {
           }}
         >
           <div
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()} // Previene que el clic dentro del modal lo cierre
             style={{
               backgroundColor: 'white',
               borderRadius: '8px',
@@ -429,45 +412,21 @@ export function App() {
                     <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.3rem' }}>
                       Fecha y hora de publicación (opcional)
                     </label>
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        border: '1px solid #ccc',
-                        borderRadius: '4px',
-                        backgroundColor: '#fff',
-                        paddingLeft: '0.6rem',
-                      }}
-                    >
-                      <button
-                        type="button"
-                        onClick={handleOpenDatePicker}
-                        title="Abrir calendario"
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          cursor: 'pointer',
-                          fontSize: '1.1rem',
-                          padding: '0.2rem 0.4rem 0.2rem 0',
-                          display: 'flex',
-                          alignItems: 'center',
-                        }}
-                      >
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                      <span style={{ position: 'absolute', left: '10px', pointerEvents: 'none', fontSize: '1rem' }}>
                         📅
-                      </button>
+                      </span>
                       <input
-                        ref={dateInputRef}
                         type="datetime-local"
                         value={scheduledFor}
                         onChange={(e) => setScheduledFor(e.target.value)}
                         style={{
                           width: '100%',
-                          padding: '0.5rem',
-                          border: 'none',
-                          outline: 'none',
+                          padding: '0.5rem 0.5rem 0.5rem 2.2rem',
+                          borderRadius: '4px',
+                          border: '1px solid #ccc',
+                          boxSizing: 'border-box',
                           fontSize: '0.9rem',
-                          backgroundColor: 'transparent',
-                          cursor: 'pointer',
                         }}
                       />
                     </div>
