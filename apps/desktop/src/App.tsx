@@ -21,22 +21,43 @@ interface MediaItem {
   name: string;
 }
 
+interface SocialAccount {
+  id: string;
+  platform: 'facebook' | 'instagram' | 'x' | 'linkedin';
+  accountName: string;
+  isConnected: boolean;
+  avatarUrl?: string;
+}
+
 export function App() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  
+  // Modales
   const [showModal, setShowModal] = useState<boolean>(false);
+  const [showAccountsModal, setShowAccountsModal] = useState<boolean>(false);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
 
+  // Formulario Post
   const [text, setText] = useState<string>('');
   const [linkUrl, setLinkUrl] = useState<string>('');
   const [scheduledFor, setScheduledFor] = useState<string>('');
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(['facebook', 'instagram']);
-  
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
   const [saving, setSaving] = useState<boolean>(false);
   
+  // Tabs y Navegación
   const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor');
   const [currentMediaIndex, setCurrentMediaIndex] = useState<number>(0);
+
+  // Estado de Cuentas / Redes Conectadas
+  const [accounts, setAccounts] = useState<SocialAccount[]>([
+    { id: '1', platform: 'facebook', accountName: 'Sin conectar', isConnected: false },
+    { id: '2', platform: 'instagram', accountName: 'Sin conectar', isConnected: false },
+    { id: '3', platform: 'x', accountName: 'Sin conectar', isConnected: false },
+    { id: '4', platform: 'linkedin', accountName: 'Sin conectar', isConnected: false },
+  ]);
+  const [connectingPlatform, setConnectingPlatform] = useState<string | null>(null);
 
   const loadPosts = async (): Promise<void> => {
     try {
@@ -65,22 +86,14 @@ export function App() {
 
   const parseMediaItems = (mediaData: string | string[]): MediaItem[] => {
     if (!mediaData) return [];
-    
-    // Si viene como Array desde Rust/JS
     if (Array.isArray(mediaData)) {
       return mediaData.map((item) => {
         if (typeof item === 'string') {
-          try {
-            return JSON.parse(item);
-          } catch {
-            return null;
-          }
+          try { return JSON.parse(item); } catch { return null; }
         }
         return item;
       }).filter(Boolean);
     }
-
-    // Si viene como String JSON
     try {
       const parsed = JSON.parse(mediaData);
       if (Array.isArray(parsed)) {
@@ -117,11 +130,7 @@ export function App() {
     setLinkUrl(post.linkUrl || '');
     setScheduledFor(timestampToDatetimeLocal(post.scheduledFor));
     setSelectedPlatforms(parsePlatforms(post.platforms));
-
-    // Recuperación robusta de adjuntos
-    const loadedMedia = parseMediaItems(post.mediaIds);
-    setMediaItems(loadedMedia);
-
+    setMediaItems(parseMediaItems(post.mediaIds));
     setCurrentMediaIndex(0);
     setActiveTab('editor');
     setShowModal(true);
@@ -167,7 +176,6 @@ export function App() {
 
     try {
       setSaving(true);
-
       const scheduledTimestamp = scheduledFor ? new Date(scheduledFor).getTime() : null;
       const mediaPayload = mediaItems.map((item) => JSON.stringify(item));
 
@@ -181,16 +189,9 @@ export function App() {
       };
 
       if (editingPostId) {
-        await invoke('update_post', {
-          input: {
-            id: editingPostId,
-            ...payload,
-          },
-        });
+        await invoke('update_post', { input: { id: editingPostId, ...payload } });
       } else {
-        await invoke('create_post', {
-          input: payload,
-        });
+        await invoke('create_post', { input: payload });
       }
 
       setShowModal(false);
@@ -220,6 +221,33 @@ export function App() {
     }
   };
 
+  // Simulación del flujo de Conexión OAuth
+  const handleConnectAccount = (platform: SocialAccount['platform']) => {
+    setConnectingPlatform(platform);
+
+    // Aquí invocaremos el comando de Rust para abrir OAuth
+    setTimeout(() => {
+      setAccounts((prev) =>
+        prev.map((acc) =>
+          acc.platform === platform
+            ? { ...acc, isConnected: true, accountName: `@demo_${platform}` }
+            : acc
+        )
+      );
+      setConnectingPlatform(null);
+    }, 1500);
+  };
+
+  const handleDisconnectAccount = (platform: SocialAccount['platform']) => {
+    setAccounts((prev) =>
+      prev.map((acc) =>
+        acc.platform === platform
+          ? { ...acc, isConnected: false, accountName: 'Sin conectar' }
+          : acc
+      )
+    );
+  };
+
   return (
     <div style={{ maxWidth: '820px', margin: '0 auto', padding: '2rem', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
@@ -234,20 +262,41 @@ export function App() {
       <section>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
           <h2 style={{ margin: 0, fontSize: '1.4rem' }}>Upcoming posts</h2>
-          <button
-            onClick={openCreateModal}
-            style={{
-              backgroundColor: '#0066cc',
-              color: 'white',
-              border: 'none',
-              padding: '0.6rem 1.2rem',
-              borderRadius: '6px',
-              fontWeight: 'bold',
-              cursor: 'pointer',
-            }}
-          >
-            + Nueva Publicación
-          </button>
+          
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button
+              onClick={() => setShowAccountsModal(true)}
+              style={{
+                backgroundColor: '#ffffff',
+                color: '#334155',
+                border: '1px solid #cbd5e1',
+                padding: '0.6rem 1.2rem',
+                borderRadius: '6px',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+              }}
+            >
+              🌐 Cuentas / Redes
+            </button>
+
+            <button
+              onClick={openCreateModal}
+              style={{
+                backgroundColor: '#0066cc',
+                color: 'white',
+                border: 'none',
+                padding: '0.6rem 1.2rem',
+                borderRadius: '6px',
+                fontWeight: 'bold',
+                cursor: 'pointer',
+              }}
+            >
+              + Nueva Publicación
+            </button>
+          </div>
         </div>
 
         {loading ? (
@@ -359,9 +408,10 @@ export function App() {
         )}
       </section>
 
+      {/* MODAL DE PUBLICACIÓN / EDICIÓN */}
       {showModal && (
         <div
-          onClick={() => setShowModal(false)} // Cierre al hacer clic en el fondo oscuro
+          onClick={() => setShowModal(false)}
           style={{
             position: 'fixed',
             top: 0,
@@ -376,7 +426,7 @@ export function App() {
           }}
         >
           <div
-            onClick={(e) => e.stopPropagation()} // Previene que el clic dentro del modal lo cierre
+            onClick={(e) => e.stopPropagation()}
             style={{
               backgroundColor: 'white',
               borderRadius: '8px',
@@ -412,21 +462,19 @@ export function App() {
                     <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.3rem' }}>
                       Fecha y hora de publicación (opcional)
                     </label>
-                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                                            <input
-                        type="datetime-local"
-                        value={scheduledFor}
-                        onChange={(e) => setScheduledFor(e.target.value)}
-                        style={{
-                          width: '100%',
-                          padding: '0.5rem 0.5rem 0.5rem 2.2rem',
-                          borderRadius: '4px',
-                          border: '1px solid #ccc',
-                          boxSizing: 'border-box',
-                          fontSize: '0.9rem',
-                        }}
-                      />
-                    </div>
+                    <input
+                      type="datetime-local"
+                      value={scheduledFor}
+                      onChange={(e) => setScheduledFor(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '0.5rem',
+                        borderRadius: '4px',
+                        border: '1px solid #ccc',
+                        boxSizing: 'border-box',
+                        fontSize: '0.9rem',
+                      }}
+                    />
                   </div>
 
                   <div style={{ marginBottom: '1rem' }}>
@@ -657,7 +705,7 @@ export function App() {
                       boxShadow: activeTab === 'preview' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
                     }}
                   >
-                    👁️ Vista Previa
+                    👁️️ Vista Previa
                   </button>
                 </div>
               </div>
@@ -687,6 +735,132 @@ export function App() {
                   {saving ? 'Guardando...' : editingPostId ? 'Actualizar' : 'Guardar en Local'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CUENTAS / REDES SOCIALES */}
+      {showAccountsModal && (
+        <div
+          onClick={() => setShowAccountsModal(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 1000,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: 'white',
+              borderRadius: '8px',
+              padding: '1.5rem',
+              width: '100%',
+              maxWidth: '520px',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.75rem' }}>
+              <h3 style={{ margin: 0, fontSize: '1.2rem' }}>🌐 Cuentas Conectadas</h3>
+              <button
+                type="button"
+                onClick={() => setShowAccountsModal(false)}
+                style={{ border: 'none', background: 'none', fontSize: '1.2rem', cursor: 'pointer', color: '#64748b' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '1.25rem' }}>
+              Vincula tus perfiles y páginas para poder publicar y programar directamente desde SocialForge.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {accounts.map((acc) => (
+                <div
+                  key={acc.id}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '0.8rem 1rem',
+                    borderRadius: '6px',
+                    border: '1px solid #e2e8f0',
+                    backgroundColor: acc.isConnected ? '#f8fafc' : '#ffffff',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <span style={{ fontSize: '1.2rem', fontWeight: 'bold', textTransform: 'uppercase', color: '#334155' }}>
+                      {acc.platform === 'facebook' && '📘'}
+                      {acc.platform === 'instagram' && '📸'}
+                      {acc.platform === 'x' && '𝕏'}
+                      {acc.platform === 'linkedin' && '💼'}
+                    </span>
+                    <div>
+                      <div style={{ fontWeight: 'bold', fontSize: '0.9rem', textTransform: 'capitalize' }}>
+                        {acc.platform}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: acc.isConnected ? '#16a34a' : '#94a3b8' }}>
+                        {acc.isConnected ? `Conectado como ${acc.accountName}` : 'No vinculado'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    {acc.isConnected ? (
+                      <button
+                        onClick={() => handleDisconnectAccount(acc.platform)}
+                        style={{
+                          backgroundColor: '#fff',
+                          color: '#e53e3e',
+                          border: '1px solid #e53e3e',
+                          padding: '0.35rem 0.8rem',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          fontSize: '0.8rem',
+                        }}
+                      >
+                        Desconectar
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleConnectAccount(acc.platform)}
+                        disabled={connectingPlatform === acc.platform}
+                        style={{
+                          backgroundColor: '#0066cc',
+                          color: 'white',
+                          border: 'none',
+                          padding: '0.35rem 0.8rem',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          fontSize: '0.8rem',
+                          fontWeight: 'bold',
+                        }}
+                      >
+                        {connectingPlatform === acc.platform ? 'Conectando...' : 'Conectar'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => setShowAccountsModal(false)}
+                style={{ padding: '0.5rem 1.2rem', borderRadius: '4px', border: '1px solid #ccc', backgroundColor: '#fff', cursor: 'pointer', fontWeight: '500' }}
+              >
+                Cerrar
+              </button>
             </div>
           </div>
         </div>
