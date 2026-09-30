@@ -413,10 +413,7 @@ export function App() {
                       Fecha y hora de publicación (opcional)
                     </label>
                     <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                      <span style={{ position: 'absolute', left: '10px', pointerEvents: 'none', fontSize: '1rem' }}>
-                        📅
-                      </span>
-                      <input
+                                            <input
                         type="datetime-local"
                         value={scheduledFor}
                         onChange={(e) => setScheduledFor(e.target.value)}
