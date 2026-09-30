@@ -231,6 +231,14 @@ export function App() {
 
   return (
     <div style={{ maxWidth: '820px', margin: '0 auto', padding: '2rem', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+      {/* Estilo global para ocultar el icono duplicado predeterminado de Chrome/WebView */}
+      <style>{`
+        input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+          display: none;
+          -webkit-appearance: none;
+        }
+      `}</style>
+
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <div>
           <h1 style={{ margin: 0, fontSize: '1.8rem', fontWeight: 'bold' }}>SocialForge</h1>
@@ -459,6 +467,7 @@ export function App() {
                           outline: 'none',
                           fontSize: '0.9rem',
                           backgroundColor: 'transparent',
+                          cursor: 'pointer',
                         }}
                       />
                     </div>
