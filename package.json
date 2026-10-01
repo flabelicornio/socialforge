@@ -1,15 +1,12 @@
 {
-  "name": "socialforge",
+  "name": "socialforge-monorepo",
   "private": true,
-  "version": "0.1.0",
-  "workspaces": [
-    "apps/*",
-    "packages/*",
-    "worker"
-  ],
   "scripts": {
-    "dev:desktop": "npm run tauri dev --workspace=apps/desktop",
-    "dev:demo": "npm run dev --workspace=apps/demo-web",
-    "dev:worker": "npm run dev --workspace=worker"
+    "dev": "pnpm --filter @socialforge/desktop dev",
+    "build": "pnpm --filter @socialforge/desktop build",
+    "preview": "pnpm --filter @socialforge/desktop preview"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0"
   }
 }
