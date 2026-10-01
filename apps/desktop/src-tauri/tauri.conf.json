@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "SocialForge - LATAM Studios",
+        "title": "SocialForge - LATAM STUDIOS | AUDIOVISUAL",
         "width": 1000,
         "height": 750,
         "resizable": true
@@ -25,7 +25,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "publisher": "LATAM Studios",
+    "publisher": "LATAM STUDIOS | AUDIOVISUAL",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
