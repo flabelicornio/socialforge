@@ -10,8 +10,8 @@
   },
   "dependencies": {
     "@socialforge/core": "workspace:*",
-    "@tauri-apps/api": "^2.0.0",
-    "@tauri-apps/plugin-opener": "^2.0.0",
+    "@tauri-apps/api": "2.0.0",
+    "@tauri-apps/plugin-opener": "2.0.0",
     "lucide-react": "^0.453.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
