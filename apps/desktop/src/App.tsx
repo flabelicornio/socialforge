@@ -170,9 +170,11 @@ export function App() {
     }
   };
 
-  const handleSavePost = async (e?: React.FormEvent): Promise<void> => {
-    if (e) e.preventDefault();
-    if (!text.trim()) return;
+  const handleSavePost = async (): Promise<void> => {
+    if (!text.trim()) {
+      alert('Por favor ingresa un texto para la publicación.');
+      return;
+    }
 
     try {
       setSaving(true);
@@ -181,7 +183,7 @@ export function App() {
 
       const payload = {
         workspaceId: 'default',
-        text: text,
+        text: text.trim(),
         platforms: selectedPlatforms,
         mediaIds: mediaPayload,
         scheduledFor: scheduledTimestamp,
@@ -225,7 +227,6 @@ export function App() {
   const handleConnectAccount = (platform: SocialAccount['platform']) => {
     setConnectingPlatform(platform);
 
-    // Aquí invocaremos el comando de Rust para abrir OAuth
     setTimeout(() => {
       setAccounts((prev) =>
         prev.map((acc) =>
@@ -442,8 +443,49 @@ export function App() {
             }}
           >
             <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <h3 style={{ margin: 0, fontSize: '1.1rem' }}>
+                  {editingPostId ? 'Editar Publicación' : 'Nueva Publicación'}
+                </h3>
+                
+                <div style={{ display: 'flex', gap: '0.3rem', backgroundColor: '#f1f5f9', padding: '0.2rem', borderRadius: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('editor')}
+                    style={{
+                      padding: '0.35rem 0.8rem',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '0.8rem',
+                      fontWeight: 'bold',
+                      backgroundColor: activeTab === 'editor' ? '#fff' : 'transparent',
+                      boxShadow: activeTab === 'editor' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
+                    }}
+                  >
+                    ✏️ Editor
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('preview')}
+                    style={{
+                      padding: '0.35rem 0.8rem',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '0.8rem',
+                      fontWeight: 'bold',
+                      backgroundColor: activeTab === 'preview' ? '#fff' : 'transparent',
+                      boxShadow: activeTab === 'preview' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
+                    }}
+                  >
+                    👁 Vista Previa
+                  </button>
+                </div>
+              </div>
+
               {activeTab === 'editor' ? (
-                <form id="post-form" onSubmit={handleSavePost}>
+                <div>
                   <div style={{ marginBottom: '1rem' }}>
                     <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.3rem' }}>
                       Texto de la publicación
@@ -454,7 +496,6 @@ export function App() {
                       placeholder="¿Qué quieres compartir?"
                       rows={4}
                       style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #ccc', boxSizing: 'border-box' }}
-                      required
                     />
                   </div>
 
@@ -558,7 +599,7 @@ export function App() {
                       ))}
                     </div>
                   </div>
-                </form>
+                </div>
               ) : (
                 <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '1.25rem', backgroundColor: '#fafafa' }}>
                   <p style={{ fontSize: '0.95rem', margin: '0 0 1rem 0', whiteSpace: 'pre-wrap' }}>{text || 'Sin texto introducido...'}</p>
@@ -668,73 +709,30 @@ export function App() {
               )}
             </div>
 
-            <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '1rem', marginTop: '1.25rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <h3 style={{ margin: 0, fontSize: '1.1rem' }}>
-                  {editingPostId ? 'Editar Publicación' : 'Nueva Publicación'}
-                </h3>
-                
-                <div style={{ display: 'flex', gap: '0.3rem', backgroundColor: '#f1f5f9', padding: '0.2rem', borderRadius: '6px' }}>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('editor')}
-                    style={{
-                      padding: '0.35rem 0.8rem',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      fontSize: '0.8rem',
-                      fontWeight: 'bold',
-                      backgroundColor: activeTab === 'editor' ? '#fff' : 'transparent',
-                      boxShadow: activeTab === 'editor' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
-                    }}
-                  >
-                    ✏️ Editor
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('preview')}
-                    style={{
-                      padding: '0.35rem 0.8rem',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      fontSize: '0.8rem',
-                      fontWeight: 'bold',
-                      backgroundColor: activeTab === 'preview' ? '#fff' : 'transparent',
-                      boxShadow: activeTab === 'preview' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
-                    }}
-                  >
-                    👁️️ Vista Previa
-                  </button>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  style={{ padding: '0.5rem 1.2rem', borderRadius: '4px', border: '1px solid #ccc', backgroundColor: '#fff', cursor: 'pointer', fontWeight: '500' }}
-                >
-                  Cerrar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSavePost()}
-                  disabled={saving}
-                  style={{
-                    padding: '0.5rem 1.2rem',
-                    borderRadius: '4px',
-                    border: 'none',
-                    backgroundColor: '#0066cc',
-                    color: 'white',
-                    cursor: 'pointer',
-                    fontWeight: 'bold',
-                  }}
-                >
-                  {saving ? 'Guardando...' : editingPostId ? 'Actualizar' : 'Guardar en Local'}
-                </button>
-              </div>
+            <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '1rem', marginTop: '1.25rem', display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+              <button
+                type="button"
+                onClick={() => setShowModal(false)}
+                style={{ padding: '0.5rem 1.2rem', borderRadius: '4px', border: '1px solid #ccc', backgroundColor: '#fff', cursor: 'pointer', fontWeight: '500' }}
+              >
+                Cerrar
+              </button>
+              <button
+                type="button"
+                onClick={handleSavePost}
+                disabled={saving}
+                style={{
+                  padding: '0.5rem 1.2rem',
+                  borderRadius: '4px',
+                  border: 'none',
+                  backgroundColor: '#0066cc',
+                  color: 'white',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                }}
+              >
+                {saving ? 'Guardando...' : editingPostId ? 'Actualizar' : 'Guardar en Local'}
+              </button>
             </div>
           </div>
         </div>
