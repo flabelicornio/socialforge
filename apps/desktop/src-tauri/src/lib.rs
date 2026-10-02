@@ -1,188 +1,215 @@
 mod facebook;
 
-use rusqlite::{params, Connection, Result as SqlResult};
 use serde::{Deserialize, Serialize};
-use std::fs;
-use std::path::PathBuf;
+use rusqlite::{params, Connection, Result as SqlResult};
 use std::sync::Mutex;
 use tauri::State;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Account {
-    pub id: i64,
-    pub platform: String,
-    pub account_name: String,
-    pub account_id: String,
-    pub access_token: String,
-    pub expires_at: Option<i64>,
+pub struct Post {
+    pub id: String,
+    pub workspace_id: String,
+    pub text: String,
+    pub platforms: String,
+    pub media_ids: String,
+    pub scheduled_for: Option<i64>,
+    pub status: String,
+    pub failure_reason: Option<String>,
+    pub link_url: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AuthUrlResponse {
-    pub auth_url: String,
+#[derive(Debug, Deserialize)]
+pub struct CreatePostInput {
+    pub workspace_id: String,
+    pub text: String,
+    pub platforms: Vec<String>,
+    pub media_ids: Vec<String>,
+    pub scheduled_for: Option<i64>,
+    pub link_url: Option<String>,
 }
 
-pub struct AppState {
-    pub db: Mutex<Connection>,
+#[derive(Debug, Deserialize)]
+pub struct UpdatePostInput {
+    pub id: String,
+    pub workspace_id: String,
+    pub text: String,
+    pub platforms: Vec<String>,
+    pub media_ids: Vec<String>,
+    pub scheduled_for: Option<i64>,
+    pub link_url: Option<String>,
 }
 
-fn get_db_path() -> PathBuf {
-    let mut path = dirs::data_dir().unwrap_or_else(|| PathBuf::from("."));
-    path.push("SocialForge");
-    fs::create_dir_all(&path).ok();
-    path.push("socialforge.db");
-    path
-}
+pub struct DbState(pub Mutex<Connection>);
 
 fn init_db(conn: &Connection) -> SqlResult<()> {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS posts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            content TEXT NOT NULL,
-            scheduled_at TEXT,
+            id TEXT PRIMARY KEY,
+            workspace_id TEXT NOT NULL,
+            text TEXT NOT NULL,
+            platforms TEXT NOT NULL,
+            media_ids TEXT NOT NULL,
+            scheduled_for INTEGER,
             status TEXT NOT NULL,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            failure_reason TEXT,
+            link_url TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
         )",
         [],
     )?;
-
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS accounts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            platform TEXT NOT NULL,
-            account_name TEXT NOT NULL,
-            account_id TEXT NOT NULL UNIQUE,
-            access_token TEXT NOT NULL,
-            expires_at INTEGER,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )",
-        [],
-    )?;
-
     Ok(())
 }
 
-// Comandante Tauri único expuesto al Frontend
 #[tauri::command]
-fn get_facebook_auth_url() -> AuthUrlResponse {
-    AuthUrlResponse {
-        auth_url: facebook::get_facebook_auth_url(),
-    }
+pub fn create_post(state: State<'_, DbState>, input: CreatePostInput) -> Result<Post, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().timestamp_millis();
+
+    let platforms_json = serde_json::to_string(&input.platforms).map_err(|e| e.to_string())?;
+    let media_json = serde_json::to_string(&input.media_ids).map_err(|e| e.to_string())?;
+
+    let post = Post {
+        id: id.clone(),
+        workspace_id: input.workspace_id,
+        text: input.text,
+        platforms: platforms_json,
+        media_ids: media_json,
+        scheduled_for: input.scheduled_for,
+        status: "draft".to_string(),
+        failure_reason: None,
+        link_url: input.link_url,
+        created_at: now,
+        updated_at: now,
+    };
+
+    conn.execute(
+        "INSERT INTO posts (id, workspace_id, text, platforms, media_ids, scheduled_for, status, failure_reason, link_url, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        params![
+            post.id,
+            post.workspace_id,
+            post.text,
+            post.platforms,
+            post.media_ids,
+            post.scheduled_for,
+            post.status,
+            post.failure_reason,
+            post.link_url,
+            post.created_at,
+            post.updated_at
+        ],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(post)
 }
 
 #[tauri::command]
-async fn save_facebook_token(
-    user_access_token: String,
-    state: State<'_, AppState>,
-) -> Result<Vec<Account>, String> {
-    let pages = facebook::fetch_user_pages(&user_access_token).await?;
-
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
-
-    for page in &pages {
-        conn.execute(
-            "INSERT INTO accounts (platform, account_name, account_id, access_token)
-             VALUES (?1, ?2, ?3, ?4)
-             ON CONFLICT(account_id) DO UPDATE SET
-                account_name = excluded.account_name,
-                access_token = excluded.access_token",
-            params!["facebook", page.name, page.id, page.access_token],
-        )
-        .map_err(|e| format!("Error guardando cuenta en SQLite: {}", e))?;
-    }
-
-    get_connected_accounts_internal(&conn)
-}
-
-#[tauri::command]
-fn get_connected_accounts(state: State<'_, AppState>) -> Result<Vec<Account>, String> {
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
-    get_connected_accounts_internal(&conn)
-}
-
-fn get_connected_accounts_internal(conn: &Connection) -> Result<Vec<Account>, String> {
+pub fn list_posts(state: State<'_, DbState>, workspace_id: String) -> Result<Vec<Post>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
-        .prepare("SELECT id, platform, account_name, account_id, access_token, expires_at FROM accounts")
+        .prepare("SELECT id, workspace_id, text, platforms, media_ids, scheduled_for, status, failure_reason, link_url, created_at, updated_at FROM posts WHERE workspace_id = ?1 ORDER OR BY created_at DESC")
+        .or_else(|_| conn.prepare("SELECT id, workspace_id, text, platforms, media_ids, scheduled_for, status, failure_reason, link_url, created_at, updated_at FROM posts WHERE workspace_id = ?1 ORDER BY created_at DESC"))
         .map_err(|e| e.to_string())?;
 
-    let accounts_iter = stmt
-        .query_map([], |row| {
-            Ok(Account {
+    let post_iter = stmt
+        .query_map(params![workspace_id], |row| {
+            Ok(Post {
                 id: row.get(0)?,
-                platform: row.get(1)?,
-                account_name: row.get(2)?,
-                account_id: row.get(3)?,
-                access_token: row.get(4)?,
-                expires_at: row.get(5)?,
+                workspace_id: row.get(1)?,
+                text: row.get(2)?,
+                platforms: row.get(3)?,
+                media_ids: row.get(4)?,
+                scheduled_for: row.get(5)?,
+                status: row.get(6)?,
+                failure_reason: row.get(7)?,
+                link_url: row.get(8)?,
+                created_at: row.get(9)?,
+                updated_at: row.get(10)?,
             })
         })
         .map_err(|e| e.to_string())?;
 
-    let mut accounts = Vec::new();
-    for acc in accounts_iter {
-        accounts.push(acc.map_err(|e| e.to_string())?);
+    let mut posts = Vec::new();
+    for post in post_iter {
+        posts.push(post.map_err(|e| e.to_string())?);
     }
-    Ok(accounts)
+
+    Ok(posts)
 }
 
 #[tauri::command]
-async fn publish_post(
-    account_id: String,
-    message: String,
-    link_url: Option<String>,
-    state: State<'_, AppState>,
-) -> Result<String, String> {
-    let (access_token, platform) = {
-        let conn = state.db.lock().map_err(|e| e.to_string())?;
-        let mut stmt = conn
-            .prepare("SELECT access_token, platform FROM accounts WHERE account_id = ?1")
-            .map_err(|e| e.to_string())?;
+pub fn update_post(state: State<'_, DbState>, input: UpdatePostInput) -> Result<Post, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let now = chrono::Utc::now().timestamp_millis();
 
-        let mut rows = stmt
-            .query(params![account_id])
-            .map_err(|e| e.to_string())?;
+    let platforms_json = serde_json::to_string(&input.platforms).map_err(|e| e.to_string())?;
+    let media_json = serde_json::to_string(&input.media_ids).map_err(|e| e.to_string())?;
 
-        if let Some(row) = rows.next().map_err(|e| e.to_string())? {
-            let token: String = row.get(0).map_err(|e| e.to_string())?;
-            let plat: String = row.get(1).map_err(|e| e.to_string())?;
-            (token, plat)
-        } else {
-            return Err("Cuenta no encontrada en la base de datos local".to_string());
-        }
-    };
+    conn.execute(
+        "UPDATE posts SET text = ?1, platforms = ?2, media_ids = ?3, scheduled_for = ?4, link_url = ?5, updated_at = ?6 WHERE id = ?7",
+        params![
+            input.text,
+            platforms_json,
+            media_json,
+            input.scheduled_for,
+            input.link_url,
+            now,
+            input.id
+        ],
+    ).map_err(|e| e.to_string())?;
 
-    if platform == "facebook" {
-        let post_id = facebook::publish_to_facebook_page(&account_id, &access_token, &message, link_url).await?;
-        
-        let conn = state.db.lock().map_err(|e| e.to_string())?;
-        conn.execute(
-            "INSERT INTO posts (content, status) VALUES (?1, ?2)",
-            params![message, "published"],
-        )
-        .ok();
+    let mut stmt = conn
+        .prepare("SELECT id, workspace_id, text, platforms, media_ids, scheduled_for, status, failure_reason, link_url, created_at, updated_at FROM posts WHERE id = ?1")
+        .map_err(|e| e.to_string())?;
 
-        Ok(post_id)
-    } else {
-        Err("Plataforma no soportada para publicación inmediata".to_string())
-    }
+    let post = stmt
+        .query_row(params![input.id], |row| {
+            Ok(Post {
+                id: row.get(0)?,
+                workspace_id: row.get(1)?,
+                text: row.get(2)?,
+                platforms: row.get(3)?,
+                media_ids: row.get(4)?,
+                scheduled_for: row.get(5)?,
+                status: row.get(6)?,
+                failure_reason: row.get(7)?,
+                link_url: row.get(8)?,
+                created_at: row.get(9)?,
+                updated_at: row.get(10)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    Ok(post)
+}
+
+#[tauri::command]
+pub fn delete_post(state: State<'_, DbState>, id: String) -> Result<(), String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM posts WHERE id = ?1", params![id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let db_path = get_db_path();
-    let conn = Connection::open(&db_path).expect("No se pudo abrir la base de datos SQLite");
-    init_db(&conn).expect("Error al inicializar las tablas de SQLite");
+    let conn = Connection::open("socialforge.db").expect("Error al abrir base de datos SQLite");
+    init_db(&conn).expect("Error al inicializar la tabla de la base de datos");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .manage(AppState {
-            db: Mutex::new(conn),
-        })
+        .manage(DbState(Mutex::new(conn)))
         .invoke_handler(tauri::generate_handler![
-            get_facebook_auth_url,
-            save_facebook_token,
-            get_connected_accounts,
-            publish_post
+            create_post,
+            list_posts,
+            update_post,
+            delete_post,
+            facebook::get_facebook_auth_url,
+            facebook::publish_to_facebook_page
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

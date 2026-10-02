@@ -32,7 +32,7 @@ interface SocialAccount {
 export function App() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-
+  
   // Modales
   const [showModal, setShowModal] = useState<boolean>(false);
   const [showAccountsModal, setShowAccountsModal] = useState<boolean>(false);
@@ -45,7 +45,7 @@ export function App() {
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(['facebook', 'instagram']);
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
   const [saving, setSaving] = useState<boolean>(false);
-
+  
   // Tabs y Navegación
   const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor');
   const [currentMediaIndex, setCurrentMediaIndex] = useState<number>(0);
@@ -182,12 +182,12 @@ export function App() {
       const mediaPayload = mediaItems.map((item) => JSON.stringify(item));
 
       const payload = {
-        workspaceId: 'default',
+        workspace_id: 'default',
         text: text.trim(),
         platforms: selectedPlatforms,
-        mediaIds: mediaPayload,
-        scheduledFor: scheduledTimestamp,
-        linkUrl: linkUrl.trim() ? linkUrl.trim() : null,
+        media_ids: mediaPayload,
+        scheduled_for: scheduledTimestamp,
+        link_url: linkUrl.trim() ? linkUrl.trim() : null,
       };
 
       if (editingPostId) {
@@ -223,20 +223,33 @@ export function App() {
     }
   };
 
-  // Simulación del flujo de Conexión OAuth
-  const handleConnectAccount = (platform: SocialAccount['platform']) => {
-    setConnectingPlatform(platform);
-
-    setTimeout(() => {
-      setAccounts((prev) =>
-        prev.map((acc) =>
-          acc.platform === platform
-            ? { ...acc, isConnected: true, accountName: `@demo_${platform}` }
-            : acc
-        )
-      );
-      setConnectingPlatform(null);
-    }, 1500);
+  // Conexión OAuth con Facebook Real o Simulación Demo
+  const handleConnectAccount = async (platform: SocialAccount['platform']) => {
+    if (platform === 'facebook') {
+      try {
+        setConnectingPlatform(platform);
+        // Llamada al backend de Rust para obtener la URL oficial de Facebook OAuth
+        const res = await invoke<{ auth_url: string }>('get_facebook_auth_url');
+        // Abre la ventana de login oficial de Meta/Facebook en el navegador del usuario
+        window.open(res.auth_url, '_blank');
+      } catch (err) {
+        alert(`Error al iniciar conexión con Facebook: ${err}`);
+      } finally {
+        setConnectingPlatform(null);
+      }
+    } else {
+      setConnectingPlatform(platform);
+      setTimeout(() => {
+        setAccounts((prev) =>
+          prev.map((acc) =>
+            acc.platform === platform
+              ? { ...acc, isConnected: true, accountName: `@demo_${platform}` }
+              : acc
+          )
+        );
+        setConnectingPlatform(null);
+      }, 1000);
+    }
   };
 
   const handleDisconnectAccount = (platform: SocialAccount['platform']) => {
@@ -263,7 +276,7 @@ export function App() {
       <section>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
           <h2 style={{ margin: 0, fontSize: '1.4rem' }}>Upcoming posts</h2>
-
+          
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <button
               onClick={() => setShowAccountsModal(true)}
@@ -421,7 +434,7 @@ export function App() {
             bottom: 0,
             backgroundColor: 'rgba(0,0,0,0.5)',
             display: 'flex',
-            justify: 'center',
+            justifyContent: 'center',
             alignItems: 'center',
             zIndex: 1000,
           }}
@@ -439,7 +452,7 @@ export function App() {
               boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
               display: 'flex',
               flexDirection: 'column',
-              justifyContent: 'space-between',
+              justify: 'space-between',
             }}
           >
             <div>
@@ -447,7 +460,7 @@ export function App() {
                 <h3 style={{ margin: 0, fontSize: '1.1rem' }}>
                   {editingPostId ? 'Editar Publicación' : 'Nueva Publicación'}
                 </h3>
-
+                
                 <div style={{ display: 'flex', gap: '0.3rem', backgroundColor: '#f1f5f9', padding: '0.2rem', borderRadius: '6px' }}>
                   <button
                     type="button"
@@ -750,7 +763,7 @@ export function App() {
             bottom: 0,
             backgroundColor: 'rgba(0,0,0,0.5)',
             display: 'flex',
-            justify: 'center',
+            justifyContent: 'center',
             alignItems: 'center',
             zIndex: 1000,
           }}
@@ -787,7 +800,7 @@ export function App() {
                   key={acc.id}
                   style={{
                     display: 'flex',
-                    justify: 'space-between',
+                    justifyContent: 'space-between',
                     alignItems: 'center',
                     padding: '0.8rem 1rem',
                     borderRadius: '6px',
@@ -796,29 +809,18 @@ export function App() {
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <div
-                      style={{
-                        width: '36px',
-                        height: '36px',
-                        borderRadius: '50%',
-                        backgroundColor: '#e2e8f0',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontWeight: 'bold',
-                        fontSize: '0.85rem',
-                        textTransform: 'uppercase',
-                        color: '#334155',
-                      }}
-                    >
-                      {acc.platform.slice(0, 2)}
-                    </div>
+                    <span style={{ fontSize: '1.2rem', fontWeight: 'bold', textTransform: 'uppercase', color: '#334155' }}>
+                      {acc.platform === 'facebook' && '📘'}
+                      {acc.platform === 'instagram' && '📸'}
+                      {acc.platform === 'x' && '𝕏'}
+                      {acc.platform === 'linkedin' && '💼'}
+                    </span>
                     <div>
                       <div style={{ fontWeight: 'bold', fontSize: '0.9rem', textTransform: 'capitalize' }}>
                         {acc.platform}
                       </div>
-                      <div style={{ fontSize: '0.8rem', color: acc.isConnected ? '#0284c7' : '#94a3b8' }}>
-                        {acc.accountName}
+                      <div style={{ fontSize: '0.75rem', color: acc.isConnected ? '#16a34a' : '#94a3b8' }}>
+                        {acc.isConnected ? `Conectado como ${acc.accountName}` : 'No vinculado'}
                       </div>
                     </div>
                   </div>
@@ -826,32 +828,29 @@ export function App() {
                   <div>
                     {acc.isConnected ? (
                       <button
-                        type="button"
                         onClick={() => handleDisconnectAccount(acc.platform)}
                         style={{
-                          padding: '0.4rem 0.8rem',
-                          borderRadius: '4px',
-                          border: '1px solid #cbd5e1',
                           backgroundColor: '#fff',
                           color: '#e53e3e',
+                          border: '1px solid #e53e3e',
+                          padding: '0.35rem 0.8rem',
+                          borderRadius: '4px',
                           cursor: 'pointer',
                           fontSize: '0.8rem',
-                          fontWeight: 'bold',
                         }}
                       >
                         Desconectar
                       </button>
                     ) : (
                       <button
-                        type="button"
                         onClick={() => handleConnectAccount(acc.platform)}
                         disabled={connectingPlatform === acc.platform}
                         style={{
-                          padding: '0.4rem 0.8rem',
-                          borderRadius: '4px',
-                          border: 'none',
                           backgroundColor: '#0066cc',
                           color: 'white',
+                          border: 'none',
+                          padding: '0.35rem 0.8rem',
+                          borderRadius: '4px',
                           cursor: 'pointer',
                           fontSize: '0.8rem',
                           fontWeight: 'bold',
@@ -869,14 +868,7 @@ export function App() {
               <button
                 type="button"
                 onClick={() => setShowAccountsModal(false)}
-                style={{
-                  padding: '0.5rem 1.2rem',
-                  borderRadius: '4px',
-                  border: '1px solid #cbd5e1',
-                  backgroundColor: '#fff',
-                  cursor: 'pointer',
-                  fontWeight: '500',
-                }}
+                style={{ padding: '0.5rem 1.2rem', borderRadius: '4px', border: '1px solid #ccc', backgroundColor: '#fff', cursor: 'pointer', fontWeight: '500' }}
               >
                 Cerrar
               </button>
@@ -887,3 +879,5 @@ export function App() {
     </div>
   );
 }
+
+export default App;
