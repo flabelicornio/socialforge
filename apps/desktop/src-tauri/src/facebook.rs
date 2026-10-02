@@ -67,7 +67,7 @@ pub async fn publish_to_facebook_page(
         let res_json: FacebookPublishResponse = response
             .json()
             .await
-            .map_err(|e| format!("Error deserializando respuesta: {}", e))?;
+            .map_err(|e| format!("Error deserializando respuesta de Facebook: {}", e))?;
         Ok(res_json.id)
     } else {
         let error_text = response

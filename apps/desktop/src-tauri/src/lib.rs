@@ -1,4 +1,4 @@
-mod facebook;
+pub mod facebook;
 
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
@@ -45,8 +45,7 @@ pub struct UpdatePostInput {
     pub link_url: Option<String>,
 }
 
-#[tauri::command]
-pub fn create_post(state: State<'_, DbState>, input: CreatePostInput) -> Result<Post, String> {
+pub fn create_post_internal(state: State<'_, DbState>, input: CreatePostInput) -> Result<Post, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().timestamp_millis();
@@ -86,8 +85,7 @@ pub fn create_post(state: State<'_, DbState>, input: CreatePostInput) -> Result<
     })
 }
 
-#[tauri::command]
-pub fn list_posts(state: State<'_, DbState>, workspace_id: String) -> Result<Vec<Post>, String> {
+pub fn list_posts_internal(state: State<'_, DbState>, workspace_id: String) -> Result<Vec<Post>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
         .prepare("SELECT id, workspace_id, text, platforms, media_ids, scheduled_for, status, failure_reason, link_url, created_at, updated_at FROM posts WHERE workspace_id = ?1 ORDER BY created_at DESC")
@@ -118,8 +116,7 @@ pub fn list_posts(state: State<'_, DbState>, workspace_id: String) -> Result<Vec
     Ok(posts)
 }
 
-#[tauri::command]
-pub fn update_post(state: State<'_, DbState>, input: UpdatePostInput) -> Result<Post, String> {
+pub fn update_post_internal(state: State<'_, DbState>, input: UpdatePostInput) -> Result<Post, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let now = chrono::Utc::now().timestamp_millis();
 
@@ -154,15 +151,14 @@ pub fn update_post(state: State<'_, DbState>, input: UpdatePostInput) -> Result<
     })
 }
 
-#[tauri::command]
-pub fn delete_post(state: State<'_, DbState>, id: String) -> Result<(), String> {
+pub fn delete_post_internal(state: State<'_, DbState>, id: String) -> Result<(), String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM posts WHERE id = ?1", [&id])
         .map_err(|e| e.to_string())?;
     Ok(())
 }
 
-fn init_db() -> Result<Connection, rusqlite::Error> {
+pub fn init_db() -> Result<Connection, rusqlite::Error> {
     let conn = Connection::open("socialforge.db")?;
     conn.execute(
         "CREATE TABLE IF NOT EXISTS posts (
@@ -181,25 +177,4 @@ fn init_db() -> Result<Connection, rusqlite::Error> {
         [],
     )?;
     Ok(conn)
-}
-
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
-    let conn = init_db().expect("Error al inicializar SQLite");
-
-    tauri::Builder::default()
-        .manage(DbState {
-            db: Mutex::new(conn),
-        })
-        .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![
-            create_post,
-            list_posts,
-            update_post,
-            delete_post,
-            facebook::get_facebook_auth_url,
-            facebook::publish_to_facebook_page,
-        ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
 }
