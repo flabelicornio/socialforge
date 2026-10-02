@@ -62,6 +62,7 @@ fn init_db(conn: &Connection) -> SqlResult<()> {
     Ok(())
 }
 
+// Comandante Tauri único expuesto al Frontend
 #[tauri::command]
 fn get_facebook_auth_url() -> AuthUrlResponse {
     AuthUrlResponse {
@@ -128,6 +129,7 @@ fn get_connected_accounts_internal(conn: &Connection) -> Result<Vec<Account>, St
 async fn publish_post(
     account_id: String,
     message: String,
+    link_url: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
     let (access_token, platform) = {
@@ -150,7 +152,7 @@ async fn publish_post(
     };
 
     if platform == "facebook" {
-        let post_id = facebook::publish_to_facebook_page(&account_id, &access_token, &message).await?;
+        let post_id = facebook::publish_to_facebook_page(&account_id, &access_token, &message, link_url).await?;
         
         let conn = state.db.lock().map_err(|e| e.to_string())?;
         conn.execute(
