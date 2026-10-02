@@ -14,7 +14,6 @@ pub struct FacebookPublishResponse {
     pub id: String,
 }
 
-/// Genera la URL oficial de OAuth para iniciar sesión con Facebook
 #[tauri::command]
 pub fn get_facebook_auth_url() -> FacebookAuthUrlResponse {
     let scopes = vec![
@@ -37,7 +36,6 @@ pub fn get_facebook_auth_url() -> FacebookAuthUrlResponse {
     FacebookAuthUrlResponse { auth_url }
 }
 
-/// Publica un mensaje de texto / enlace en una Página de Facebook usando su Access Token
 #[tauri::command]
 pub async fn publish_to_facebook_page(
     page_id: String,
