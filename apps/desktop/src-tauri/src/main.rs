@@ -44,8 +44,7 @@ fn main() {
             update_post,
             delete_post,
             facebook::get_facebook_auth_url,
-            facebook::get_connected_accounts,
-            facebook::save_facebook_token,
+            facebook::fetch_facebook_pages,
             facebook::publish_to_facebook_page,
         ])
         .run(tauri::generate_context!())

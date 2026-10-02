@@ -1,26 +1,31 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Mutex;
 
 const FB_APP_ID: &str = "1245604221092071";
 const REDIRECT_URI: &str = "https://socialforge.latamstudios.com/oauth/facebook/callback";
 
-// Estructura para representar cuentas conectadas
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ConnectedAccount {
-    pub id: String,
-    pub platform: String,
-    pub account_name: String,
-    pub access_token: String,
-    pub is_connected: bool,
-}
-
-// Almacenamiento en memoria para tokens y cuentas vinculadas
-static CONNECTED_ACCOUNTS: Mutex<Vec<ConnectedAccount>> = Mutex::new(Vec::new());
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FacebookAuthUrlResponse {
     pub auth_url: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct FacebookPage {
+    pub id: String,
+    pub name: String,
+    pub access_token: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct PageData {
+    id: String,
+    name: String,
+    access_token: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct AccountsResponse {
+    data: Vec<PageData>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -28,19 +33,18 @@ pub struct FacebookPublishResponse {
     pub id: String,
 }
 
+/// Genera la URL de autorización oficial de Meta
 #[tauri::command]
 pub fn get_facebook_auth_url() -> FacebookAuthUrlResponse {
     let scopes = vec![
         "business_management",
-        "instagram_basic",
-        "instagram_content_publish",
         "pages_manage_posts",
         "pages_read_engagement",
         "pages_read_user_content",
         "pages_show_list",
     ];
 
-    // Usamos response_type=token para el flujo implícito adecuado para clientes Desktop/SPA
+    // response_type=token genera directamente el Access Token para aplicaciones Desktop/Client-side
     let auth_url = format!(
         "https://www.facebook.com/v26.0/dialog/oauth?client_id={}&redirect_uri={}&scope={}&response_type=token",
         FB_APP_ID,
@@ -51,38 +55,48 @@ pub fn get_facebook_auth_url() -> FacebookAuthUrlResponse {
     FacebookAuthUrlResponse { auth_url }
 }
 
+/// Consulta las páginas asociadas al User Access Token
 #[tauri::command]
-pub fn get_connected_accounts() -> Result<Vec<ConnectedAccount>, String> {
-    let accounts = CONNECTED_ACCOUNTS
-        .lock()
-        .map_err(|e| format!("Error al acceder al estado de cuentas: {}", e))?;
-    Ok(accounts.clone())
-}
+pub async fn fetch_facebook_pages(user_access_token: String) -> Result<Vec<FacebookPage>, String> {
+    let client = reqwest::Client::new();
+    let url = format!(
+        "https://graph.facebook.com/v26.0/me/accounts?access_token={}",
+        user_access_token
+    );
 
-#[tauri::command]
-pub fn save_facebook_token(user_access_token: String) -> Result<Vec<ConnectedAccount>, String> {
-    let mut accounts = CONNECTED_ACCOUNTS
-        .lock()
-        .map_err(|e| format!("Error guardando token: {}", e))?;
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Error en conexión con Meta: {}", e))?;
 
-    // Actualiza o inserta la cuenta de Facebook
-    if let Some(acc) = accounts.iter_mut().find(|a| a.platform == "facebook") {
-        acc.access_token = user_access_token.clone();
-        acc.is_connected = true;
-        acc.account_name = "Página de Facebook Vinculada".to_string();
+    if response.status().is_success() {
+        let res: AccountsResponse = response
+            .json()
+            .await
+            .map_err(|e| format!("Error al decodificar páginas de Meta: {}", e))?;
+
+        let pages = res
+            .data
+            .into_iter()
+            .map(|p| FacebookPage {
+                id: p.id,
+                name: p.name,
+                access_token: p.access_token,
+            })
+            .collect();
+
+        Ok(pages)
     } else {
-        accounts.push(ConnectedAccount {
-            id: "fb_1".to_string(),
-            platform: "facebook".to_string(),
-            account_name: "Página de Facebook Vinculada".to_string(),
-            access_token: user_access_token,
-            is_connected: true,
-        });
+        let err_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Error desconocido de Meta".to_string());
+        Err(format!("Error devuelto por la API de Meta: {}", err_text))
     }
-
-    Ok(accounts.clone())
 }
 
+/// Publica un post en una página de Facebook mediante Graph API
 #[tauri::command]
 pub async fn publish_to_facebook_page(
     page_id: String,
@@ -108,19 +122,19 @@ pub async fn publish_to_facebook_page(
         .form(&params)
         .send()
         .await
-        .map_err(|e| format!("Error en la petición de red: {}", e))?;
+        .map_err(|e| format!("Error de red al publicar: {}", e))?;
 
     if response.status().is_success() {
         let res_json: FacebookPublishResponse = response
             .json()
             .await
-            .map_err(|e| format!("Error deserializando respuesta de Facebook: {}", e))?;
+            .map_err(|e| format!("Error en la respuesta de publicación: {}", e))?;
         Ok(res_json.id)
     } else {
         let error_text = response
             .text()
             .await
             .unwrap_or_else(|_| "Error desconocido de la API".to_string());
-        Err(format!("Error devuelto por Facebook API: {}", error_text))
+        Err(format!("Error de Meta API: {}", error_text))
     }
 }
