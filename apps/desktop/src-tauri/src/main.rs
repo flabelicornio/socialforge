@@ -6,7 +6,7 @@ use socialforge_desktop::{
     update_post_internal, CreatePostInput, DbState, Post, UpdatePostInput,
 };
 use std::sync::Mutex;
-use tauri::State;
+use tauri::{Manager, State};
 
 #[tauri::command]
 fn create_post(state: State<'_, DbState>, input: CreatePostInput) -> Result<Post, String> {
