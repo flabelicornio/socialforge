@@ -1,4 +1,3 @@
-use reqwest;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -370,7 +369,8 @@ pub fn start_scheduler(app_handle: AppHandle) {
         loop {
             interval.tick().await;
 
-            if let Some(state) = app_handle.try_state::<DbState>() {
+            // 1. Leemos los posts pendientes y las credenciales liberando la DB de inmediato
+            let pending_tasks = if let Some(state) = app_handle.try_state::<DbState>() {
                 if let Ok(conn) = state.db.lock() {
                     let now = chrono::Utc::now().timestamp_millis();
                     let mut stmt = match conn.prepare(
@@ -388,6 +388,8 @@ pub fn start_scheduler(app_handle: AppHandle) {
                         .map(|iter| iter.filter_map(|r| r.ok()).collect())
                         .unwrap_or_default();
 
+                    let mut tasks = Vec::new();
+
                     for (id, text, link_url) in due_posts {
                         let mut acc_stmt = match conn.prepare(
                             "SELECT extra_json, external_account_id FROM accounts WHERE platform = 'facebook' LIMIT 1",
@@ -403,28 +405,45 @@ pub fn start_scheduler(app_handle: AppHandle) {
                         if let Some((Some(extra_json), Some(page_id))) = account_data {
                             if let Ok(val) = serde_json::from_str::<serde_json::Value>(&extra_json) {
                                 if let Some(page_token) = val.get("page_access_token").and_then(|v| v.as_str()) {
-                                    match facebook::publish_to_facebook_page(
-                                        page_id,
-                                        page_token.to_string(),
-                                        text.clone(),
-                                        link_url,
-                                    )
-                                    .await
-                                    {
-                                        Ok(_) => {
-                                            let _ = conn.execute(
-                                                "UPDATE posts SET status = 'PUBLISHED', updated_at = ?1 WHERE id = ?2",
-                                                params![now, id],
-                                            );
-                                        }
-                                        Err(err) => {
-                                            let _ = conn.execute(
-                                                "UPDATE posts SET status = 'FAILED', failure_reason = ?1, updated_at = ?2 WHERE id = ?3",
-                                                params![err, now, id],
-                                            );
-                                        }
-                                    }
+                                    tasks.push((id, page_id, page_token.to_string(), text, link_url));
                                 }
+                            }
+                        }
+                    }
+                    tasks
+                } else {
+                    Vec::new()
+                }
+            } else {
+                Vec::new()
+            };
+
+            // 2. Realizamos la llamada a la API fuera del candado de SQLite
+            for (id, page_id, page_token, text, link_url) in pending_tasks {
+                let res = facebook::publish_to_facebook_page(
+                    page_id,
+                    page_token,
+                    text,
+                    link_url,
+                )
+                .await;
+
+                // 3. Volvemos a solicitar acceso a la DB solo para actualizar el estado del post
+                if let Some(state) = app_handle.try_state::<DbState>() {
+                    if let Ok(conn) = state.db.lock() {
+                        let now = chrono::Utc::now().timestamp_millis();
+                        match res {
+                            Ok(_) => {
+                                let _ = conn.execute(
+                                    "UPDATE posts SET status = 'PUBLISHED', updated_at = ?1 WHERE id = ?2",
+                                    params![now, id],
+                                );
+                            }
+                            Err(err) => {
+                                let _ = conn.execute(
+                                    "UPDATE posts SET status = 'FAILED', failure_reason = ?1, updated_at = ?2 WHERE id = ?3",
+                                    params![err, now, id],
+                                );
                             }
                         }
                     }
