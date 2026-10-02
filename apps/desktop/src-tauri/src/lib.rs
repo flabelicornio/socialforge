@@ -2,8 +2,10 @@ pub mod facebook;
 
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::PathBuf;
 use std::sync::Mutex;
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 
 pub struct DbState {
     pub db: Mutex<Connection>,
@@ -158,8 +160,12 @@ pub fn delete_post_internal(state: State<'_, DbState>, id: String) -> Result<(),
     Ok(())
 }
 
-pub fn init_db() -> Result<Connection, rusqlite::Error> {
-    let conn = Connection::open("socialforge.db")?;
+pub fn init_db(app_handle: &AppHandle) -> Result<Connection, Box<dyn std::error::Error>> {
+    let mut db_dir = app_handle.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("./"));
+    fs::create_dir_all(&db_dir)?;
+    db_dir.push("socialforge.db");
+
+    let conn = Connection::open(db_dir)?;
     conn.execute(
         "CREATE TABLE IF NOT EXISTS posts (
             id TEXT PRIMARY KEY,

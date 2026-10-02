@@ -1,7 +1,6 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use rusqlite::Connection;
 use socialforge_desktop::{
     create_post_internal, delete_post_internal, facebook, init_db, list_posts_internal,
     update_post_internal, CreatePostInput, DbState, Post, UpdatePostInput,
@@ -30,11 +29,13 @@ fn delete_post(state: State<'_, DbState>, id: String) -> Result<(), String> {
 }
 
 fn main() {
-    let conn = init_db().expect("Error al inicializar SQLite");
-
     tauri::Builder::default()
-        .manage(DbState {
-            db: Mutex::new(conn),
+        .setup(|app| {
+            let conn = init_db(app.handle()).expect("Error al inicializar SQLite");
+            app.manage(DbState {
+                db: Mutex::new(conn),
+            });
+            Ok(())
         })
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
