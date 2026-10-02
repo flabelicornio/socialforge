@@ -35,12 +35,12 @@ fn list_accounts(state: State<'_, DbState>, workspace_id: String) -> Result<Vec<
 }
 
 #[tauri::command]
-fn save_facebook_account(
+async fn save_facebook_account(
     state: State<'_, DbState>,
     workspace_id: String,
     user_access_token: String,
 ) -> Result<Account, String> {
-    save_facebook_account_internal(state, workspace_id, user_access_token)
+    save_facebook_account_internal(state, workspace_id, user_access_token).await
 }
 
 fn main() {
