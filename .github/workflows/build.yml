@@ -1,4 +1,4 @@
-name: Build Desktop App
+name: Build Desktop Application
 
 on:
   push:
@@ -11,12 +11,7 @@ jobs:
   build-tauri:
     permissions:
       contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        platform: [windows-latest, macos-latest]
-
-    runs-on: ${{ matrix.platform }}
+    runs-on: windows-latest
 
     steps:
       - name: Checkout repository
@@ -27,24 +22,40 @@ jobs:
         with:
           node-version: 20
 
-      - name: Setup pnpm
+      - name: Install pnpm
         uses: pnpm/action-setup@v3
         with:
           version: 9
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
 
-      - name: Install dependencies
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './apps/desktop/src-tauri -> target'
+
+      - name: Install frontend dependencies
         run: pnpm install
 
-      - name: Build with Tauri Action
+      - name: Build Tauri App
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          projectPath: './apps/desktop'
           tagName: v__VERSION__
           releaseName: 'SocialForge v__VERSION__'
-          releaseBody: 'Consulte las notas de la versión para obtener más información.'
+          releaseBody: 'Ver los recursos adjuntos para descargar la aplicación.'
           releaseDraft: true
           prerelease: false
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: SocialForge-Windows-Installer
+          path: |
+            apps/desktop/src-tauri/target/release/bundle/msi/*.msi
+            apps/desktop/src-tauri/target/release/bundle/nsis/*.exe
