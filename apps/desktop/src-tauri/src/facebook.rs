@@ -1,8 +1,22 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Mutex;
 
 const FB_APP_ID: &str = "1245604221092071";
 const REDIRECT_URI: &str = "https://socialforge.latamstudios.com/oauth/facebook/callback";
+
+// Estructura para representar cuentas conectadas
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ConnectedAccount {
+    pub id: String,
+    pub platform: String,
+    pub account_name: String,
+    pub access_token: String,
+    pub is_connected: bool,
+}
+
+// Almacenamiento en memoria para tokens y cuentas vinculadas
+static CONNECTED_ACCOUNTS: Mutex<Vec<ConnectedAccount>> = Mutex::new(Vec::new());
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FacebookAuthUrlResponse {
@@ -26,14 +40,47 @@ pub fn get_facebook_auth_url() -> FacebookAuthUrlResponse {
         "pages_show_list",
     ];
 
+    // Usamos response_type=token para el flujo implícito adecuado para clientes Desktop/SPA
     let auth_url = format!(
-        "https://www.facebook.com/v26.0/dialog/oauth?client_id={}&redirect_uri={}&scope={}&response_type=code",
+        "https://www.facebook.com/v26.0/dialog/oauth?client_id={}&redirect_uri={}&scope={}&response_type=token",
         FB_APP_ID,
         urlencoding::encode(REDIRECT_URI),
         scopes.join(",")
     );
 
     FacebookAuthUrlResponse { auth_url }
+}
+
+#[tauri::command]
+pub fn get_connected_accounts() -> Result<Vec<ConnectedAccount>, String> {
+    let accounts = CONNECTED_ACCOUNTS
+        .lock()
+        .map_err(|e| format!("Error al acceder al estado de cuentas: {}", e))?;
+    Ok(accounts.clone())
+}
+
+#[tauri::command]
+pub fn save_facebook_token(user_access_token: String) -> Result<Vec<ConnectedAccount>, String> {
+    let mut accounts = CONNECTED_ACCOUNTS
+        .lock()
+        .map_err(|e| format!("Error guardando token: {}", e))?;
+
+    // Actualiza o inserta la cuenta de Facebook
+    if let Some(acc) = accounts.iter_mut().find(|a| a.platform == "facebook") {
+        acc.access_token = user_access_token.clone();
+        acc.is_connected = true;
+        acc.account_name = "Página de Facebook Vinculada".to_string();
+    } else {
+        accounts.push(ConnectedAccount {
+            id: "fb_1".to_string(),
+            platform: "facebook".to_string(),
+            account_name: "Página de Facebook Vinculada".to_string(),
+            access_token: user_access_token,
+            is_connected: true,
+        });
+    }
+
+    Ok(accounts.clone())
 }
 
 #[tauri::command]
