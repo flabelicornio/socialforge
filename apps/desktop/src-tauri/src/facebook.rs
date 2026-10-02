@@ -9,42 +9,35 @@ pub struct FacebookAuthUrlResponse {
     pub auth_url: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FacebookPublishResponse {
+    pub id: String,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct FacebookPage {
+pub struct FacebookPageInfo {
     pub id: String,
     pub name: String,
     pub access_token: String,
 }
 
 #[derive(Debug, Deserialize)]
-struct PageData {
-    id: String,
-    name: String,
-    access_token: String,
+struct FacebookPagesResponse {
+    pub data: Vec<FacebookPageInfo>,
 }
 
-#[derive(Debug, Deserialize)]
-struct AccountsResponse {
-    data: Vec<PageData>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct FacebookPublishResponse {
-    pub id: String,
-}
-
-/// Genera la URL de autorización oficial de Meta
 #[tauri::command]
 pub fn get_facebook_auth_url() -> FacebookAuthUrlResponse {
     let scopes = vec![
         "business_management",
+        "instagram_basic",
+        "instagram_content_publish",
         "pages_manage_posts",
         "pages_read_engagement",
         "pages_read_user_content",
         "pages_show_list",
     ];
 
-    // response_type=token genera directamente el Access Token para aplicaciones Desktop/Client-side
     let auth_url = format!(
         "https://www.facebook.com/v26.0/dialog/oauth?client_id={}&redirect_uri={}&scope={}&response_type=token",
         FB_APP_ID,
@@ -55,9 +48,7 @@ pub fn get_facebook_auth_url() -> FacebookAuthUrlResponse {
     FacebookAuthUrlResponse { auth_url }
 }
 
-/// Consulta las páginas asociadas al User Access Token
-#[tauri::command]
-pub async fn fetch_facebook_pages(user_access_token: String) -> Result<Vec<FacebookPage>, String> {
+pub async fn get_user_pages(user_access_token: &str) -> Result<Vec<FacebookPageInfo>, String> {
     let client = reqwest::Client::new();
     let url = format!(
         "https://graph.facebook.com/v26.0/me/accounts?access_token={}",
@@ -68,35 +59,23 @@ pub async fn fetch_facebook_pages(user_access_token: String) -> Result<Vec<Faceb
         .get(&url)
         .send()
         .await
-        .map_err(|e| format!("Error en conexión con Meta: {}", e))?;
+        .map_err(|e| format!("Error en la petición de red: {}", e))?;
 
     if response.status().is_success() {
-        let res: AccountsResponse = response
+        let res_json: FacebookPagesResponse = response
             .json()
             .await
-            .map_err(|e| format!("Error al decodificar páginas de Meta: {}", e))?;
-
-        let pages = res
-            .data
-            .into_iter()
-            .map(|p| FacebookPage {
-                id: p.id,
-                name: p.name,
-                access_token: p.access_token,
-            })
-            .collect();
-
-        Ok(pages)
+            .map_err(|e| format!("Error deserializando páginas de Facebook: {}", e))?;
+        Ok(res_json.data)
     } else {
-        let err_text = response
+        let error_text = response
             .text()
             .await
-            .unwrap_or_else(|_| "Error desconocido de Meta".to_string());
-        Err(format!("Error devuelto por la API de Meta: {}", err_text))
+            .unwrap_or_else(|_| "Error desconocido de la API".to_string());
+        Err(format!("Error devuelto por Facebook API: {}", error_text))
     }
 }
 
-/// Publica un post en una página de Facebook mediante Graph API
 #[tauri::command]
 pub async fn publish_to_facebook_page(
     page_id: String,
@@ -122,19 +101,19 @@ pub async fn publish_to_facebook_page(
         .form(&params)
         .send()
         .await
-        .map_err(|e| format!("Error de red al publicar: {}", e))?;
+        .map_err(|e| format!("Error en la petición de red: {}", e))?;
 
     if response.status().is_success() {
         let res_json: FacebookPublishResponse = response
             .json()
             .await
-            .map_err(|e| format!("Error en la respuesta de publicación: {}", e))?;
+            .map_err(|e| format!("Error deserializando respuesta de Facebook: {}", e))?;
         Ok(res_json.id)
     } else {
         let error_text = response
             .text()
             .await
             .unwrap_or_else(|_| "Error desconocido de la API".to_string());
-        Err(format!("Error de Meta API: {}", error_text))
+        Err(format!("Error devuelto por Facebook API: {}", error_text))
     }
 }

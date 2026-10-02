@@ -1,7 +1,8 @@
-use chrono::Utc;
+use reqwest;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager, State};
 
@@ -12,17 +13,6 @@ pub struct DbState {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Account {
-    pub id: String,
-    pub workspace_id: String,
-    pub platform: String,
-    pub display_name: String,
-    pub connected_at: i64,
-    pub external_account_id: Option<String>,
-    pub extra_json: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
 pub struct Post {
     pub id: String,
     pub workspace_id: String,
@@ -37,7 +27,7 @@ pub struct Post {
     pub updated_at: i64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CreatePostInput {
     pub workspace_id: String,
     pub text: String,
@@ -47,7 +37,7 @@ pub struct CreatePostInput {
     pub scheduled_for: Option<i64>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct UpdatePostInput {
     pub id: String,
     pub text: Option<String>,
@@ -58,22 +48,27 @@ pub struct UpdatePostInput {
     pub status: Option<String>,
 }
 
-pub fn init_db(app_handle: &AppHandle) -> Result<Connection, String> {
-    let app_dir = app_handle
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Account {
+    pub id: String,
+    pub workspace_id: String,
+    pub platform: String,
+    pub display_name: String,
+    pub external_account_id: Option<String>,
+    pub extra_json: Option<String>,
+    pub connected_at: i64,
+}
+
+pub fn init_db(app_handle: &AppHandle) -> Result<Connection, Box<dyn std::error::Error>> {
+    let mut db_dir = app_handle
         .path()
         .app_data_dir()
-        .map_err(|e| format!("Error al obtener app_data_dir: {}", e))?;
+        .unwrap_or_else(|_| PathBuf::from("./"));
+    fs::create_dir_all(&db_dir)?;
+    db_dir.push("socialforge.db");
 
-    if !app_dir.exists() {
-        fs::create_dir_all(&app_dir)
-            .map_err(|e| format!("Error al crear el directorio de la aplicacion: {}", e))?;
-    }
+    let conn = Connection::open(db_dir)?;
 
-    let db_path = app_dir.join("socialforge.db");
-    let conn = Connection::open(&db_path)
-        .map_err(|e| format!("Error al abrir/crear SQLite en {:?}: {}", db_path, e))?;
-
-    // Tablas base
     conn.execute_batch(
         "
         CREATE TABLE IF NOT EXISTS workspaces (
@@ -87,9 +82,9 @@ pub fn init_db(app_handle: &AppHandle) -> Result<Connection, String> {
             workspace_id TEXT NOT NULL,
             platform TEXT NOT NULL,
             display_name TEXT NOT NULL,
-            connected_at INTEGER NOT NULL,
             external_account_id TEXT,
-            extra_json TEXT
+            extra_json TEXT,
+            connected_at INTEGER NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS posts (
@@ -106,25 +101,7 @@ pub fn init_db(app_handle: &AppHandle) -> Result<Connection, String> {
             updated_at INTEGER NOT NULL
         );
         ",
-    )
-    .map_err(|e| format!("Error en las migraciones de SQLite: {}", e))?;
-
-    // Workspace por defecto si no existe
-    let count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM workspaces WHERE id = 'default'",
-            [],
-            |r| r.get(0),
-        )
-        .unwrap_or(0);
-
-    if count == 0 {
-        let now = Utc::now().timestamp_millis();
-        let _ = conn.execute(
-            "INSERT INTO workspaces (id, name, created_at) VALUES ('default', 'Mi Espacio', ?1)",
-            params![now],
-        );
-    }
+    )?;
 
     Ok(conn)
 }
@@ -135,12 +112,12 @@ pub fn create_post_internal(
 ) -> Result<Post, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let id = uuid::Uuid::new_v4().to_string();
-    let now = Utc::now().timestamp_millis();
+    let now = chrono::Utc::now().timestamp_millis();
 
     let platforms_json =
-        serde_json::to_string(&input.platforms).map_err(|e| format!("JSON error: {}", e))?;
-    let media_json = serde_json::to_string(&input.media_ids.unwrap_or_default())
-        .map_err(|e| format!("JSON error: {}", e))?;
+        serde_json::to_string(&input.platforms).map_err(|e| e.to_string())?;
+    let media_ids_json = serde_json::to_string(&input.media_ids.unwrap_or_default())
+        .map_err(|e| e.to_string())?;
 
     let status = if input.scheduled_for.is_some() {
         "PENDING".to_string()
@@ -156,21 +133,22 @@ pub fn create_post_internal(
             input.workspace_id,
             input.text,
             platforms_json,
-            media_json,
+            media_ids_json,
             input.link_url,
             input.scheduled_for,
             status,
             now,
             now
         ],
-    ).map_err(|e| format!("Error insertando post: {}", e))?;
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(Post {
         id,
         workspace_id: input.workspace_id,
         text: input.text,
         platforms: platforms_json,
-        media_ids: media_json,
+        media_ids: media_ids_json,
         link_url: input.link_url,
         scheduled_for: input.scheduled_for,
         status,
@@ -187,12 +165,12 @@ pub fn list_posts_internal(
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
         .prepare(
-            "SELECT id, workspace_id, text, platforms, media_ids, link_url, scheduled_for, status, failure_reason, created_at, updated_at 
+            "SELECT id, workspace_id, text, platforms, media_ids, link_url, scheduled_for, status, failure_reason, created_at, updated_at
              FROM posts WHERE workspace_id = ?1 ORDER BY created_at DESC",
         )
         .map_err(|e| e.to_string())?;
 
-    let rows = stmt
+    let post_iter = stmt
         .query_map(params![workspace_id], |row| {
             Ok(Post {
                 id: row.get(0)?,
@@ -210,13 +188,12 @@ pub fn list_posts_internal(
         })
         .map_err(|e| e.to_string())?;
 
-    let mut result = Vec::new();
-    for post in rows {
-        if let Ok(p) = post {
-            result.push(p);
-        }
+    let mut posts = Vec::new();
+    for post in post_iter {
+        posts.push(post.map_err(|e| e.to_string())?);
     }
-    Ok(result)
+
+    Ok(posts)
 }
 
 pub fn update_post_internal(
@@ -224,51 +201,55 @@ pub fn update_post_internal(
     input: UpdatePostInput,
 ) -> Result<Post, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    let now = Utc::now().timestamp_millis();
+    let now = chrono::Utc::now().timestamp_millis();
 
-    if let Some(text) = &input.text {
-        let _ = conn.execute(
+    if let Some(ref text) = input.text {
+        conn.execute(
             "UPDATE posts SET text = ?1, updated_at = ?2 WHERE id = ?3",
             params![text, now, input.id],
-        );
-    }
-    if let Some(platforms) = &input.platforms {
-        let json = serde_json::to_string(platforms).unwrap_or_default();
-        let _ = conn.execute(
-            "UPDATE posts SET platforms = ?1, updated_at = ?2 WHERE id = ?3",
-            params![json, now, input.id],
-        );
-    }
-    if let Some(media) = &input.media_ids {
-        let json = serde_json::to_string(media).unwrap_or_default();
-        let _ = conn.execute(
-            "UPDATE posts SET media_ids = ?1, updated_at = ?2 WHERE id = ?3",
-            params![json, now, input.id],
-        );
-    }
-    if let Some(link) = &input.link_url {
-        let _ = conn.execute(
-            "UPDATE posts SET link_url = ?1, updated_at = ?2 WHERE id = ?3",
-            params![link, now, input.id],
-        );
-    }
-    if let Some(sched) = input.scheduled_for {
-        let _ = conn.execute(
-            "UPDATE posts SET scheduled_for = ?1, updated_at = ?2 WHERE id = ?3",
-            params![sched, now, input.id],
-        );
-    }
-    if let Some(status) = &input.status {
-        let _ = conn.execute(
-            "UPDATE posts SET status = ?1, updated_at = ?2 WHERE id = ?3",
-            params![status, now, input.id],
-        );
+        )
+        .map_err(|e| e.to_string())?;
     }
 
-    conn.query_row(
-        "SELECT id, workspace_id, text, platforms, media_ids, link_url, scheduled_for, status, failure_reason, created_at, updated_at FROM posts WHERE id = ?1",
-        params![input.id],
-        |row| {
+    if let Some(ref platforms) = input.platforms {
+        let json = serde_json::to_string(platforms).map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE posts SET platforms = ?1, updated_at = ?2 WHERE id = ?3",
+            params![json, now, input.id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
+    if let Some(ref link_url) = input.link_url {
+        conn.execute(
+            "UPDATE posts SET link_url = ?1, updated_at = ?2 WHERE id = ?3",
+            params![link_url, now, input.id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
+    if let Some(scheduled_for) = input.scheduled_for {
+        conn.execute(
+            "UPDATE posts SET scheduled_for = ?1, updated_at = ?2 WHERE id = ?3",
+            params![scheduled_for, now, input.id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
+    if let Some(ref status) = input.status {
+        conn.execute(
+            "UPDATE posts SET status = ?1, updated_at = ?2 WHERE id = ?3",
+            params![status, now, input.id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
+    let mut stmt = conn
+        .prepare("SELECT id, workspace_id, text, platforms, media_ids, link_url, scheduled_for, status, failure_reason, created_at, updated_at FROM posts WHERE id = ?1")
+        .map_err(|e| e.to_string())?;
+
+    let post = stmt
+        .query_row(params![input.id], |row| {
             Ok(Post {
                 id: row.get(0)?,
                 workspace_id: row.get(1)?,
@@ -282,60 +263,70 @@ pub fn update_post_internal(
                 created_at: row.get(9)?,
                 updated_at: row.get(10)?,
             })
-        },
-    )
-    .map_err(|e| format!("Error al obtener post actualizado: {}", e))
+        })
+        .map_err(|e| e.to_string())?;
+
+    Ok(post)
 }
 
-pub fn delete_post_internal(state: State<'_, DbState>, id: String) -> Result<(), String> {
+pub fn delete_post_internal(
+    state: State<'_, DbState>,
+    id: String,
+) -> Result<(), String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM posts WHERE id = ?1", params![id])
-        .map_err(|e| format!("Error borrando post: {}", e))?;
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
-pub fn save_facebook_account_internal(
+pub async fn save_facebook_account_internal(
     state: State<'_, DbState>,
     workspace_id: String,
     user_access_token: String,
 ) -> Result<Account, String> {
-    // Obtiene las páginas asociadas desde Meta API
-    let pages = facebook::get_user_pages(&user_access_token)?;
-    let first_page = pages
-        .first()
-        .ok_or_else(|| "No se encontraron páginas de Facebook asociadas a este usuario".to_string())?;
+    let pages = facebook::get_user_pages(&user_access_token).await?;
 
+    if pages.is_empty() {
+        return Err("No se encontraron Páginas de Facebook administradas por esta cuenta.".to_string());
+    }
+
+    let page = &pages[0];
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    let now = Utc::now().timestamp_millis();
-    let account_id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().timestamp_millis();
+    let account_id = format!("fb_{}", page.id);
 
-    let extra = serde_json::json!({
-        "page_access_token": first_page.access_token
-    })
-    .to_string();
+    let extra_json = serde_json::to_string(&serde_json::json!({
+        "page_access_token": page.access_token,
+        "user_access_token": user_access_token,
+    }))
+    .map_err(|e| e.to_string())?;
 
     conn.execute(
-        "INSERT INTO accounts (id, workspace_id, platform, display_name, connected_at, external_account_id, extra_json)
-         VALUES (?1, ?2, 'facebook', ?3, ?4, ?5, ?6)",
+        "INSERT INTO accounts (id, workspace_id, platform, display_name, external_account_id, extra_json, connected_at)
+         VALUES (?1, ?2, 'facebook', ?3, ?4, ?5, ?6)
+         ON CONFLICT(id) DO UPDATE SET
+            display_name = excluded.display_name,
+            extra_json = excluded.extra_json,
+            connected_at = excluded.connected_at",
         params![
             account_id,
             workspace_id,
-            first_page.name,
-            now,
-            first_page.id,
-            extra
+            page.name,
+            page.id,
+            extra_json,
+            now
         ],
     )
-    .map_err(|e| format!("Error al guardar la cuenta en SQLite: {}", e))?;
+    .map_err(|e| e.to_string())?;
 
     Ok(Account {
         id: account_id,
         workspace_id,
         platform: "facebook".to_string(),
-        display_name: first_page.name.clone(),
+        display_name: page.name.clone(),
+        external_account_id: Some(page.id.clone()),
+        extra_json: Some(extra_json),
         connected_at: now,
-        external_account_id: Some(first_page.id.clone()),
-        extra_json: Some(extra),
     })
 }
 
@@ -346,87 +337,91 @@ pub fn list_accounts_internal(
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
         .prepare(
-            "SELECT id, workspace_id, platform, display_name, connected_at, external_account_id, extra_json 
+            "SELECT id, workspace_id, platform, display_name, external_account_id, extra_json, connected_at
              FROM accounts WHERE workspace_id = ?1 ORDER BY connected_at DESC",
         )
         .map_err(|e| e.to_string())?;
 
-    let rows = stmt
+    let iter = stmt
         .query_map(params![workspace_id], |row| {
             Ok(Account {
                 id: row.get(0)?,
                 workspace_id: row.get(1)?,
                 platform: row.get(2)?,
                 display_name: row.get(3)?,
-                connected_at: row.get(4)?,
-                external_account_id: row.get(5)?,
-                extra_json: row.get(6)?,
+                external_account_id: row.get(4)?,
+                extra_json: row.get(5)?,
+                connected_at: row.get(6)?,
             })
         })
         .map_err(|e| e.to_string())?;
 
-    let mut result = Vec::new();
-    for acc in rows {
-        if let Ok(a) = acc {
-            result.push(a);
-        }
+    let mut accounts = Vec::new();
+    for acc in iter {
+        accounts.push(acc.map_err(|e| e.to_string())?);
     }
-    Ok(result)
+
+    Ok(accounts)
 }
 
 pub fn start_scheduler(app_handle: AppHandle) {
-    tokio::spawn(async move {
+    tauri::async_runtime::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
         loop {
             interval.tick().await;
 
             if let Some(state) = app_handle.try_state::<DbState>() {
                 if let Ok(conn) = state.db.lock() {
-                    let now = Utc::now().timestamp_millis();
+                    let now = chrono::Utc::now().timestamp_millis();
                     let mut stmt = match conn.prepare(
-                        "SELECT id, text, link_url, extra_json FROM posts 
-                         JOIN accounts ON accounts.workspace_id = posts.workspace_id
-                         WHERE posts.status = 'PENDING' AND posts.scheduled_for <= ?1",
+                        "SELECT id, text, link_url FROM posts WHERE status = 'PENDING' AND scheduled_for <= ?1",
                     ) {
                         Ok(s) => s,
                         Err(_) => continue,
                     };
 
-                    let pending_posts = stmt.query_map(params![now], |row| {
-                        Ok((
-                            row.get::<_, String>(0)?,
-                            row.get::<_, String>(1)?,
-                            row.get::<_, Option<String>>(2)?,
-                            row.get::<_, Option<String>>(3)?,
-                        ))
-                    });
+                    let due_posts: Vec<(String, String, Option<String>)> = stmt
+                        .query_map(params![now], |row| {
+                            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+                        })
+                        .ok()
+                        .map(|iter| iter.filter_map(|r| r.ok()).collect())
+                        .unwrap_or_default();
 
-                    if let Ok(posts) = pending_posts {
-                        for p in posts.flatten() {
-                            let (post_id, text, _link, extra_json) = p;
-                            if let Some(extra_str) = extra_json {
-                                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&extra_str) {
-                                    if let Some(page_token) = v.get("page_access_token").and_then(|t| t.as_str()) {
-                                        // Marca como procesando para evitar duplicados
-                                        let _ = conn.execute(
-                                            "UPDATE posts SET status = 'PROCESSING' WHERE id = ?1",
-                                            params![post_id],
-                                        );
+                    for (id, text, link_url) in due_posts {
+                        let mut acc_stmt = match conn.prepare(
+                            "SELECT extra_json, external_account_id FROM accounts WHERE platform = 'facebook' LIMIT 1",
+                        ) {
+                            Ok(s) => s,
+                            Err(_) => continue,
+                        };
 
-                                        // Publica a Facebook via graph api
-                                        match facebook::publish_to_facebook_page("me", page_token, &text) {
-                                            Ok(_) => {
-                                                let _ = conn.execute(
-                                                    "UPDATE posts SET status = 'PUBLISHED', updated_at = ?1 WHERE id = ?2",
-                                                    params![Utc::now().timestamp_millis(), post_id],
-                                                );
-                                            }
-                                            Err(err) => {
-                                                let _ = conn.execute(
-                                                    "UPDATE posts SET status = 'FAILED', failure_reason = ?1, updated_at = ?2 WHERE id = ?3",
-                                                    params![err, Utc::now().timestamp_millis(), post_id],
-                                                );
-                                            }
+                        let account_data: Option<(Option<String>, Option<String>)> = acc_stmt
+                            .query_row([], |row| Ok((row.get(0)?, row.get(1)?)))
+                            .ok();
+
+                        if let Some((Some(extra_json), Some(page_id))) = account_data {
+                            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&extra_json) {
+                                if let Some(page_token) = val.get("page_access_token").and_then(|v| v.as_str()) {
+                                    match facebook::publish_to_facebook_page(
+                                        page_id,
+                                        page_token.to_string(),
+                                        text.clone(),
+                                        link_url,
+                                    )
+                                    .await
+                                    {
+                                        Ok(_) => {
+                                            let _ = conn.execute(
+                                                "UPDATE posts SET status = 'PUBLISHED', updated_at = ?1 WHERE id = ?2",
+                                                params![now, id],
+                                            );
+                                        }
+                                        Err(err) => {
+                                            let _ = conn.execute(
+                                                "UPDATE posts SET status = 'FAILED', failure_reason = ?1, updated_at = ?2 WHERE id = ?3",
+                                                params![err, now, id],
+                                            );
                                         }
                                     }
                                 }
