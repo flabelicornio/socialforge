@@ -1,30 +1,12 @@
 {
-  "name": "@socialforge/desktop",
-  "version": "0.1.0",
+  "name": "socialforge-monorepo",
   "private": true,
-  "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview"
-  },
-  "dependencies": {
-    "@socialforge/core": "workspace:*",
-    "@tauri-apps/api": "^2.0.0",
-    "@tauri-apps/plugin-opener": "^2.0.0",
-    "lucide-react": "^0.453.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "dev": "pnpm --filter @socialforge/desktop dev",
+    "build": "pnpm --filter @socialforge/desktop build",
+    "preview": "pnpm --filter @socialforge/desktop preview"
   },
   "devDependencies": {
-    "@types/node": "^22.7.5",
-    "@types/react": "^18.3.11",
-    "@types/react-dom": "^18.3.1",
-    "@vitejs/plugin-react": "^4.3.2",
-    "autoprefixer": "^10.4.20",
-    "postcss": "^8.4.47",
-    "tailwindcss": "^3.4.13",
-    "typescript": "^5.6.3",
-    "vite": "^5.4.8"
+    "@tauri-apps/cli": "^2.0.0"
   }
 }
